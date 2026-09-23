@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 
 import copilot
@@ -546,5 +547,17 @@ def models():
 # ---------- built frontend (single-container deploy) ----------
 
 _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+class _SpaFiles(StaticFiles):
+    """Unknown paths get index.html so client-side routes survive a page refresh."""
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as e:
+            if e.status_code != 404:
+                raise
+            return await super().get_response("index.html", scope)
+
+
 if _DIST.is_dir():
-    app.mount("/", StaticFiles(directory=_DIST, html=True), name="frontend")
+    app.mount("/", _SpaFiles(directory=_DIST, html=True), name="frontend")
