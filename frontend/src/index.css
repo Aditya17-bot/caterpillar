@@ -122,3 +122,7 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+/* Keep a new critical hazard in view even when the operator is below the instruments. */
+.alert-takeover { position: sticky; top: 84px; z-index: 25; box-shadow: 0 12px 32px #0006; }
+.cab-mode .alert-takeover { top: 12px; }
+html { color-scheme: dark; }

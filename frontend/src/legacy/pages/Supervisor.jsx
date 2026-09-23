@@ -1,3 +1,4 @@
+import { Skeleton } from '../../components/common/EmptyState'
 import { useEffect, useState } from "react";
 import { get } from "../api.js";
 
@@ -12,12 +13,13 @@ function Stat({ label, value, sub }) {
 }
 
 export default function Supervisor({ live, setMachineId }) {
+  const [impactError, setImpactError] = useState(false);
   const [impact, setImpact] = useState(null);
   const [board, setBoard] = useState([]);
 
   useEffect(() => {
     const load = () => {
-      get("/api/impact").then(setImpact).catch(() => {});
+      get("/api/impact").then(r => { setImpact(r); setImpactError(false); }).catch(() => setImpactError(true));
       get("/api/leaderboard").then(setBoard).catch(() => {});
     };
     load();
@@ -31,6 +33,7 @@ export default function Supervisor({ live, setMachineId }) {
   return (
     <>
       <h2>Business impact</h2>
+      {!impact && (impactError ? <p role="status" className="advisory">Impact data unavailable. Retrying automatically…</p> : <Skeleton label="Loading fleet impact" />)}
       {impact && (
         <>
           <div className="tiles">
@@ -53,7 +56,7 @@ export default function Supervisor({ live, setMachineId }) {
         <tbody>
           {fleet.map((m) => (
             <tr key={m.machineId} onClick={() => setMachineId(m.machineId)} style={{ cursor: "pointer" }}>
-              <td><b>{m.machineId}</b> {m.machineType}</td>
+              <td><button onClick={(e) => { e.stopPropagation(); setMachineId(m.machineId); }}>{m.machineId}</button> {m.machineType}</td>
               <td className={m.online ? "ok" : "bad"}>{m.online ? "online" : "offline"}</td>
               <td>{m.operator?.name || "–"}</td>
               <td>{m.telemetry?.engineTempC} °C</td>

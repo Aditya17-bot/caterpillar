@@ -102,6 +102,7 @@ export default function AppShell() {
   useEffect(() => {
     setCabMode(false)
     setMenuOpen(false)
+    window.scrollTo({ top: 0, behavior: 'instant' })
   }, [pathname])
   const tick = useAppStore((s) => s.tick)
   useEffect(() => {
