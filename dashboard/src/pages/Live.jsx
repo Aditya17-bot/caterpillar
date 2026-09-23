@@ -1,5 +1,6 @@
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmtTime } from "../api.js";
+import { Radar, TiltView } from "../MachineView.jsx";
 
 function Tile({ label, value, unit, bad }) {
   return (
@@ -62,6 +63,42 @@ export default function Live({ live, machineId, machine, setMachineId }) {
         />
       </div>
       {p.advisory && <p className="advisory">Terrain advice: {p.advisory}</p>}
+
+      <div className="grid3">
+        <div className="card">
+          <h3>Machine attitude</h3>
+          <TiltView slopeDeg={t.slopeDeg} type={machine?.machineType} danger={Math.abs(t.slopeDeg) > 25} />
+        </div>
+        <div className="card">
+          <h3>Proximity radar</h3>
+          <Radar obstacleCm={t.obstacleCm ?? 400} personNear={machine?.activeAlerts?.some((a) => a.type === "camera_person")} />
+        </div>
+        <div className="card">
+          <h3>Predictive warnings</h3>
+          {p.overheatEtaSec != null ? (
+            <div className="countdown bad">
+              Overheat in <b>{Math.floor(p.overheatEtaSec / 60)}:{String(p.overheatEtaSec % 60).padStart(2, "0")}</b>
+              <div className="muted">engine temperature trend reaches 110 °C</div>
+            </div>
+          ) : (
+            <div className="countdown ok">Engine temperature trend stable</div>
+          )}
+          <p>
+            Fault model: <b className={p.fault && p.fault !== "normal" ? "bad" : "ok"}>{(p.fault || "–").replace(/_/g, " ")}</b>
+            {p.faultProb != null && ` (${Math.round(p.faultProb * 100)}%)`}
+          </p>
+          <p>
+            Speed vs terrain limit:{" "}
+            {p.optimalSpeedKmh != null && t.speedKmh != null ? (
+              <b className={t.speedKmh > p.optimalSpeedKmh * 1.25 + 1 ? "bad" : "ok"}>
+                {Math.round((100 * t.speedKmh) / Math.max(p.optimalSpeedKmh, 0.1))}% of advised
+              </b>
+            ) : (
+              "–"
+            )}
+          </p>
+        </div>
+      </div>
 
       <div className="grid2">
         <div className="card">

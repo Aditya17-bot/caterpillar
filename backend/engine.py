@@ -27,6 +27,9 @@ OFFLINE_AFTER_SEC = 5
 FAULT_EVERY_SEC = 3
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
+OVERHEAT_C = 110
+OVERHEAT_WARN_ETA_SEC = 180       # warn when the temperature trend reaches OVERHEAT_C within this
+BUCKET_M3 = {"excavator": 1.5, "loader": 3.0, "dozer": 4.0}   # material moved per load cycle
 
 
 # ---------- WebSocket hub ----------
@@ -73,6 +76,93 @@ class Window:
 
 
 @dataclass
+class Shift:
+    """Running totals for the current operator's shift on one machine."""
+    start: float = field(default_factory=time.time)
+    operator_id: Optional[str] = None
+    ticks: int = 0
+    engine_on_sec: float = 0.0
+    idle_sec: float = 0.0
+    moving_sec: float = 0.0
+    distance_km: float = 0.0
+    fuel_l: float = 0.0
+    idle_fuel_l: float = 0.0
+    load_cycles: int = 0
+    sum_temp: float = 0.0
+    sum_speed: float = 0.0
+    sum_rpm: float = 0.0
+    sum_abs_slope: float = 0.0
+    sum_vibration: float = 0.0
+    max_temp: float = 0.0
+    max_tilt: float = 0.0
+    max_speed: float = 0.0
+    overspeed_sec: float = 0.0
+    belt_off_sec: float = 0.0
+    harsh_events: int = 0
+    alerts: Dict[str, int] = field(default_factory=dict)
+
+    def add(self, t: Dict, dt: float, overspeed: bool) -> None:
+        if not t.get("engineOn"):
+            return
+        speed = t.get("speedKmh", 0)
+        self.ticks += 1
+        self.engine_on_sec += dt
+        if speed < 0.5:
+            self.idle_sec += dt
+            self.idle_fuel_l += t.get("fuelRateLph", 0) * dt / 3600
+        else:
+            self.moving_sec += dt
+        self.distance_km += speed * dt / 3600
+        self.fuel_l += t.get("fuelRateLph", 0) * dt / 3600
+        self.load_cycles += bool(t.get("loadCycle"))
+        self.sum_temp += t.get("engineTempC", 0)
+        self.sum_speed += speed
+        self.sum_rpm += t.get("rpm", 0)
+        self.sum_abs_slope += abs(t.get("slopeDeg", 0))
+        self.sum_vibration += t.get("vibration", 0)
+        self.max_temp = max(self.max_temp, t.get("engineTempC", 0))
+        self.max_tilt = max(self.max_tilt, abs(t.get("slopeDeg", 0)))
+        self.max_speed = max(self.max_speed, speed)
+        self.overspeed_sec += dt if overspeed else 0
+        self.belt_off_sec += dt if not t.get("seatbelt", True) else 0
+        self.harsh_events += bool(t.get("harshEvent"))
+
+    def report(self, machine_type: str, now: float) -> Dict:
+        n = max(self.ticks, 1)
+        on = max(self.engine_on_sec, 1)
+        hours = on / 3600
+        return {
+            "start": self.start, "end": now, "operatorId": self.operator_id,
+            "durationMin": round((now - self.start) / 60, 1),
+            "engineOnMin": round(self.engine_on_sec / 60, 1),
+            "idleMin": round(self.idle_sec / 60, 1),
+            "movingMin": round(self.moving_sec / 60, 1),
+            "idlePct": round(100 * self.idle_sec / on, 1),
+            "distanceKm": round(self.distance_km, 2),
+            "fuelL": round(self.fuel_l, 2),
+            "idleFuelL": round(self.idle_fuel_l, 2),
+            "fuelPerHourL": round(self.fuel_l / hours, 1) if hours > 0 else 0,
+            "loadCycles": self.load_cycles,
+            "materialM3": round(self.load_cycles * BUCKET_M3.get(machine_type, 1.5), 1),
+            "cyclesPerHour": round(self.load_cycles / hours, 1) if hours > 0 else 0,
+            "avgEngineTempC": round(self.sum_temp / n, 1),
+            "maxEngineTempC": round(self.max_temp, 1),
+            "avgSpeedKmh": round(self.sum_speed / n, 2),
+            "maxSpeedKmh": round(self.max_speed, 1),
+            "avgRpm": round(self.sum_rpm / n),
+            "avgAbsSlopeDeg": round(self.sum_abs_slope / n, 1),
+            "maxTiltDeg": round(self.max_tilt, 1),
+            "avgVibration": round(self.sum_vibration / n, 3),
+            "overspeedMin": round(self.overspeed_sec / 60, 1),
+            "seatbeltOffMin": round(self.belt_off_sec / 60, 1),
+            "seatbeltCompliancePct": round(100 * (1 - self.belt_off_sec / on), 1),
+            "harshEvents": self.harsh_events,
+            "alerts": dict(self.alerts),
+            "alertCount": sum(self.alerts.values()),
+        }
+
+
+@dataclass
 class MachineState:
     machine_id: str
     machine_type: str = "excavator"
@@ -89,6 +179,8 @@ class MachineState:
     window: Window = field(default_factory=Window)
     history: Deque[Dict] = field(default_factory=lambda: deque(maxlen=180))
     commands: List[Dict] = field(default_factory=list)       # queued for the simulator
+    shift: Shift = field(default_factory=Shift)
+    task_cycles: int = 0                                      # load cycles since current task started
 
 
 machines: Dict[str, MachineState] = {}
@@ -131,6 +223,7 @@ async def raise_alert(ms: MachineState, kind: str, severity: str, message: str) 
             "type": kind, "severity": severity, "message": message, "snapshot": snapshot,
         })
     ms.alerts[kind] = alert
+    ms.shift.alerts[kind] = ms.shift.alerts.get(kind, 0) + 1
     await hub.send("alert", alert)
 
 
@@ -253,6 +346,39 @@ async def close_window(ms: MachineState, now: float) -> None:
         await level(ms, "anomaly", None)
 
 
+# ---------- forecasting ----------
+
+def overheat_eta(ms: MachineState) -> Optional[float]:
+    """Seconds until engine temp reaches OVERHEAT_C, from a linear fit of the last ~30 s."""
+    pts = [(h["ts"], h["engineTempC"]) for h in list(ms.history)[-30:] if h.get("engineTempC") is not None]
+    if len(pts) < 10:
+        return None
+    t0 = pts[0][0]
+    xs = [p[0] - t0 for p in pts]
+    ys = [p[1] for p in pts]
+    mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
+    var = sum((x - mx) ** 2 for x in xs)
+    if var == 0:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var   # degrees per second
+    current = ys[-1]
+    if slope < 0.05 or current >= OVERHEAT_C:
+        return None
+    return (OVERHEAT_C - current) / slope
+
+
+async def run_forecasts(ms: MachineState, t: Dict) -> None:
+    eta = overheat_eta(ms)
+    ms.predictions["overheatEtaSec"] = round(eta) if eta is not None else None
+    soon = eta is not None and eta <= OVERHEAT_WARN_ETA_SEC and t.get("engineTempC", 0) > 90
+    await level(ms, "overheat_predicted", "warning" if soon else None,
+                f"Engine predicted to reach {OVERHEAT_C} °C in ~{(eta or 0) / 60:.1f} min. Reduce load now.")
+
+
+def start_shift(ms: MachineState, operator_id: Optional[str]) -> None:
+    ms.shift = Shift(operator_id=operator_id)
+
+
 # ---------- main entry ----------
 
 async def ingest(t: Dict) -> Dict:
@@ -267,6 +393,7 @@ async def ingest(t: Dict) -> Dict:
         if op:
             op["certified"] = json.loads(op["certified"] or "[]")
             ms.operator = op
+            start_shift(ms, op["id"])
             await hub.send("login", {"machineId": ms.machine_id, "operator": op})
     elif not rfid and ms.operator:
         ms.operator = None
@@ -293,6 +420,8 @@ async def ingest(t: Dict) -> Dict:
 
     accumulate(ms, t, dt)
     await run_rules(ms, t, now)
+    ms.shift.add(t, dt, "overspeed" in ms.alerts)
+    ms.task_cycles += bool(t.get("loadCycle"))
 
     ms.last, ms.last_seen, ms.online = t, now, True
     ms.history.append({
@@ -300,6 +429,7 @@ async def ingest(t: Dict) -> Dict:
         "speedKmh": t.get("speedKmh"), "optimalSpeedKmh": speed.speed_kmh,
         "obstacleCm": t.get("obstacleCm"), "rpm": t.get("rpm"),
     })
+    await run_forecasts(ms, t)
     await hub.send("telemetry", summary(ms))
 
     if now - ms.window.start >= WINDOW_SEC:

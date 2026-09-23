@@ -33,7 +33,7 @@ NOMINAL_SPEED = {"excavator": 10.0, "loader": 30.0, "dozer": 8.5}   # ~85% of ge
 
 SCENARIOS = {
     # name: duration seconds
-    "overheat": 45,
+    "overheat": 150,
     "worker_approach": 14,
     "steep_slope": 20,
     "unbuckle": 15,
@@ -149,9 +149,10 @@ class Machine:
         self.rpm = max(0.0, approach(self.rpm, rpm_target, 0.3) + r.gauss(0, 20) * (phase != "off"))
 
         temp_target = 45 if phase == "off" else 82 + 8 * (self.rpm / 1750) + 0.1 * self.humidity
-        if self.active("overheat"):
-            temp_target = 120
-        self.temp = approach(self.temp, temp_target, 0.06) + r.gauss(0, 0.2)
+        if self.active("overheat"):   # steady climb (~9 °C/min) so the forecast has time to warn
+            self.temp = min(122.0, self.temp + 0.15 * dt) + r.gauss(0, 0.1)
+        else:
+            self.temp = approach(self.temp, temp_target, 0.06) + r.gauss(0, 0.2)
 
         oil_target = 14.0 if self.active("low_oil") else 50.0 if phase != "off" else 0.0
         self.oil = approach(self.oil, oil_target, 0.2) + r.gauss(0, 0.5)

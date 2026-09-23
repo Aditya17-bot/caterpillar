@@ -5,7 +5,7 @@ A working end-to-end version exists (see README → Run it). Everyone starts fro
 ## Member 1: Simulator & demo (`simulator/`, `docs/`)
 - [ ] Learn every scenario on the Simulator page; tune durations/values in `sim.py` so each alert is clearly visible in the demo.
 - [ ] Optional: Wokwi (wokwi.com) ESP32 circuit with DHT22, HC-SR04, MPU6050, button as seatbelt, and a sketch that prints the telemetry JSON. Screenshot for the pitch ("hardware-ready").
-- [ ] `docs/DEMO.md`: 3 to 5 minute demo script: login → normal work → seatbelt → worker approaching → overheating/ML fault → drowsiness camera → tasks & predicted time → training recommendation → incident log.
+- [ ] `docs/DEMO.md`: 3 to 5 minute demo story of one shift: voice briefing → normal work → worker approaching (spoken alert + radar) → overheat countdown before the limit → drowsiness camera → ask the co-pilot "why?" → task pace + explained estimate → end shift report → hazard drill raises the safety score → supervisor impact panel.
 - [ ] Pitch deck: problem, architecture diagram, features vs problem statement table (README), model metrics (`backend/RESULTS.md`), future scope.
 - [ ] Record a backup demo video.
 
@@ -17,10 +17,12 @@ A working end-to-end version exists (see README → Run it). Everyone starts fro
 
 ## Member 3: Backend (`backend/`)
 - [ ] Read `engine.py` (live pipeline + alert rules) and `main.py` (REST). Run `python -m pytest backend/tests -q`.
-- [ ] Operator shift summary endpoint: hours worked, idle %, incidents, fuel, tasks done.
 - [ ] Record actual task durations and feed them back into task-time training (append to `data/task_history.csv`).
 - [ ] Optional: MongoDB instead of SQLite if the judges care about the stack (only `db.py` changes).
 - [ ] Keep `docs/CONTRACT.md` accurate.
+
+## Everyone
+- [ ] Get an Anthropic API key for the demo laptop (`ANTHROPIC_API_KEY`) so the co-pilot runs on Claude, not offline mode.
 
 ## Member 4: Dashboard (`dashboard/`)
 The current UI is deliberately plain. Make it good:

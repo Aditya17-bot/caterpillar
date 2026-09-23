@@ -12,6 +12,8 @@ export default function Tasks({ machineId }) {
 
   useEffect(() => {
     load();
+    const id = setInterval(load, 5000); // live pace for the running task
+    return () => clearInterval(id);
   }, [machineId]);
 
   const setStatus = async (id, status) => {
@@ -55,6 +57,31 @@ export default function Tasks({ machineId }) {
                 <small className="muted">
                   ({t.predicted_low}–{t.predicted_high})
                 </small>
+                {t.factors?.length > 0 && (
+                  <div className="factors">
+                    {t.factors.slice(0, 3).map((f) => (
+                      <span key={f.factor} className={f.deltaMin > 0 ? "bad" : "ok"}>
+                        {f.label} {f.deltaMin > 0 ? "+" : ""}
+                        {f.deltaMin} min
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {t.pace && (
+                  <div className="pace">
+                    <div className="bar">
+                      <div style={{ width: `${t.pace.progressPct}%` }} />
+                    </div>
+                    {t.pace.doneM3}/{t.volume_m3} m³ · {t.pace.elapsedMin} min
+                    {t.pace.projectedMinutes != null && (
+                      <b className={t.pace.deltaMin > 0 ? "bad" : "ok"}>
+                        {" "}
+                        → finish in {t.pace.projectedMinutes} min ({t.pace.deltaMin > 0 ? "+" : ""}
+                        {t.pace.deltaMin} vs plan)
+                      </b>
+                    )}
+                  </div>
+                )}
               </td>
               <td>{t.actual_minutes != null ? `${t.actual_minutes} min` : "–"}</td>
               <td>

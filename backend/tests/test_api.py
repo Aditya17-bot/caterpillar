@@ -127,3 +127,49 @@ def test_training_quiz_and_score(client):
                       json={"operatorId": "OP-01", "moduleId": "seatbelt", "answers": [1, 1, 0]}).json()
     assert res == {"score": 100.0, "passed": True}
     assert client.get("/api/operators/OP-01/score").json()["trainingCompleted"] == 1
+
+
+def test_task_factors_and_pace(client):
+    t = client.get("/api/tasks?machineId=EXC-001").json()[1]
+    assert isinstance(t["factors"], list)
+    started = client.patch(f"/api/tasks/{t['id']}", json={"status": "in_progress"}).json()
+    assert started["pace"]["doneM3"] == 0
+    for _ in range(3):
+        client.post("/api/telemetry", json=telemetry(loadCycle=True))
+    t2 = next(x for x in client.get("/api/tasks?machineId=EXC-001").json() if x["id"] == t["id"])
+    assert t2["pace"]["doneM3"] == 4.5 and t2["pace"]["projectedMinutes"] is not None
+
+
+def test_overheat_forecast_warns_before_threshold(client):
+    import engine
+    ms = engine.state("EXC-002")
+    import time as _t
+    now = _t.time()
+    ms.history.clear()
+    for i in range(20):   # climbing 0.5 °C/s from 95 °C
+        ms.history.append({"ts": now - 20 + i, "engineTempC": 95 + 0.5 * i})
+    assert 0 < engine.overheat_eta(ms) < 60
+
+
+def test_shift_report_and_end(client):
+    rep = client.get("/api/shift/EXC-001").json()
+    assert rep["stats"]["loadCycles"] >= 3 and "avgEngineTempC" in rep["stats"]
+    assert rep["scores"]["grade"] in "ABCD"
+    end = client.post("/api/shift/EXC-001/end", json={}).json()
+    assert end["summary"] and end["source"] in ("claude", "offline")
+    assert client.get("/api/shift-reports?machineId=EXC-001").json()[0]["id"] == end["id"]
+    assert client.get("/api/shift/EXC-001").json()["stats"]["loadCycles"] == 0
+
+
+def test_copilot_chat_and_briefing(client):
+    r = client.post("/api/copilot/chat", json={"machineId": "EXC-001", "message": "why is there an alert?"}).json()
+    assert r["reply"]
+    b = client.post("/api/copilot/briefing", json={"machineId": "EXC-001"}).json()
+    assert b["reply"]
+
+
+def test_impact_and_leaderboard(client):
+    assert "annualSavingIfIdleHalved" in client.get("/api/impact").json()
+    client.post("/api/training/sim-result", json={"operatorId": "OP-02", "score": 80})
+    board = client.get("/api/leaderboard").json()
+    assert next(o for o in board if o["id"] == "OP-02")["simBest"] == 80

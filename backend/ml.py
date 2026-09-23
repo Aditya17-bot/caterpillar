@@ -174,6 +174,41 @@ def predict_task_time(req: TaskTimeRequest):
     )
 
 
+# Reference ("typical") conditions each factor is compared against.
+_TASK_REFERENCE = {"soil_type": "gravel", "weather": "clear", "time_of_day": "morning",
+                   "slope_deg": 0.0, "temp_c": 25.0}
+
+
+def explain_task_time(req: TaskTimeRequest) -> List[Dict]:
+    """How much each condition adds to / removes from the estimate vs typical conditions.
+
+    One-at-a-time substitution: predict with the real value, then with that factor set to the
+    reference value; the difference is the factor's effect in minutes.
+    """
+    b = MODELS["task_time"]
+    exp = req.operator_experience_yrs
+    if exp is None:
+        exp = b["operators"].get(req.operator_id, b["default_experience"])
+    base = {
+        "machine_type": req.machine_type or b["machines"].get(req.machine_id, "excavator"),
+        "task_type": req.task_type, "soil_type": req.soil_type, "weather": req.weather,
+        "time_of_day": req.time_of_day or _time_of_day(), "operator_experience_yrs": exp,
+        "volume_m3": req.volume_m3, "slope_deg": req.slope_deg, "temp_c": req.temp_c,
+    }
+    reference = {**_TASK_REFERENCE, "operator_experience_yrs": b["default_experience"]}
+    rows = [base] + [{**base, k: v} for k, v in reference.items()]
+    preds = b["model"].predict(pd.DataFrame(rows))
+    labels = {
+        "soil_type": f"{base['soil_type']} soil", "weather": f"{base['weather']} weather",
+        "time_of_day": f"{base['time_of_day']} shift", "slope_deg": f"{base['slope_deg']:.0f}° slope",
+        "temp_c": f"{base['temp_c']:.0f} °C air temp",
+        "operator_experience_yrs": f"{exp:.1f} yrs operator experience",
+    }
+    out = [{"factor": k, "label": labels[k], "deltaMin": round(float(preds[0] - p), 1)}
+           for k, p in zip(reference, preds[1:])]
+    return sorted([f for f in out if abs(f["deltaMin"]) >= 0.5], key=lambda f: -abs(f["deltaMin"]))
+
+
 # ---------- unusual behavior ----------
 
 class AnomalyRequest(CamelModel):

@@ -65,6 +65,7 @@ Alert types and rules (in `backend/engine.py`):
 | `idling` | engine on, stationary > `IDLE_ALERT_SEC` (demo 45 s, real 300 s) → warning |
 | `anomaly` | usage-window anomaly model flags the last window → warning |
 | `drowsy` / `camera_person` | camera events → critical / warning |
+| `overheat_predicted` | linear trend of last ~30 s reaches 110 °C within 3 min → warning (`predictions.overheatEtaSec`) |
 
 Usage windows last `WINDOW_SEC` (demo 60 s, real 900 s) and are scaled to 15 minutes before scoring.
 
@@ -76,13 +77,21 @@ Usage windows last `WINDOW_SEC` (demo 60 s, real 900 s) and are scaled to 15 min
 | GET | `/api/machines/{id}/history` | last ~3 min of readings |
 | GET | `/api/alerts/active` | |
 | GET | `/api/operators`, `/api/operators/{id}`, `/api/operators/{id}/score` | safety score = 100 − 5·critical − 2·warning (7 days) + 3·modules passed |
-| GET | `/api/tasks?machineId=&operatorId=&day=YYYY-MM-DD` | today by default; includes `predicted_minutes`, `predicted_low`, `predicted_high` |
+| GET | `/api/tasks?machineId=&operatorId=&day=YYYY-MM-DD` | today by default; includes `predicted_minutes`, `predicted_low`, `predicted_high`, `factors` (top effects in minutes) and, for the running task, `pace` (`progressPct`, `projectedMinutes`, `deltaMin`) |
 | PATCH | `/api/tasks/{id}` | `{ "status": "pending" \| "in_progress" \| "done" }`; done records `actual_minutes` |
 | GET | `/api/incidents?machineId=&operatorId=&type=&severity=&limit=` | newest first, with sensor `snapshot` |
 | GET | `/api/insights/windows?machineId=&limit=` | past usage windows |
 | GET | `/api/training/modules?operatorId=` | modules (no answers), `bestScore`, `recommended`, `instructors` |
 | POST | `/api/training/progress` | `{ operatorId, moduleId, answers: [int] }` → `{ score, passed }` |
 | GET/POST | `/api/training/bookings` | `{ operatorId, instructor, slot, topic }` |
+| GET | `/api/shift/{machineId}` | live shift report: stats (totals, averages, peaks), tasks, incidents, cost, scores, highlights |
+| POST | `/api/shift/{machineId}/end` | `{ lang }` → final report + `summary` (AI or offline) + `source`; saved, counters restart |
+| GET | `/api/shift-reports?machineId=&operatorId=` | saved reports |
+| POST | `/api/copilot/chat` | `{ machineId, message, history: [{role, content}], lang }` → `{ reply, source: "claude" \| "offline" }` |
+| POST | `/api/copilot/briefing` | `{ machineId, lang }` → `{ reply, source }` |
+| POST | `/api/training/sim-result` | `{ operatorId, score, avgReactionMs, hazards, missed }` (stored as module `hazard-sim`) |
+| GET | `/api/impact` | fleet fuel/idle/CO₂/cost numbers + yearly projection |
+| GET | `/api/leaderboard` | operators by safety score, with hazard-sim best |
 | GET | `/health`, `/models` | status, model metrics |
 
 ## 5. ML endpoints (also used internally)

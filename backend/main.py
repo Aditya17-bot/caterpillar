@@ -17,8 +17,10 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import copilot
 import db
 import engine
+import insights
 import ml
 import seed
 import training
@@ -121,57 +123,26 @@ def list_operators():
     return [_operator(r) for r in db.query("SELECT * FROM operators ORDER BY id")]
 
 
-def safety_score(operator_id: str) -> Dict:
-    week_ago = time.time() - 7 * 86400
-    rows = db.query("SELECT type, severity FROM incidents WHERE operator_id = ? AND ts > ?",
-                    [operator_id, week_ago])
-    done = db.one("SELECT COUNT(DISTINCT module_id) AS n FROM training_progress "
-                  "WHERE operator_id = ? AND score >= 60", [operator_id])["n"]
-    penalty = sum(5 if r["severity"] == "critical" else 2 for r in rows)
-    score = max(0, min(100, 100 - penalty + 3 * done))
-    by_type: Dict[str, int] = {}
-    for r in rows:
-        by_type[r["type"]] = by_type.get(r["type"], 0) + 1
-    return {"operatorId": operator_id, "score": score, "incidents7d": len(rows),
-            "byType": by_type, "trainingCompleted": done}
-
-
 @app.get("/api/operators/{operator_id}", tags=["operators"])
 def get_operator(operator_id: str):
     row = db.one("SELECT * FROM operators WHERE id = ?", [operator_id])
     if not row:
         raise HTTPException(404, "operator not found")
-    return {**_operator(row), "safety": safety_score(operator_id)}
+    return {**_operator(row), "safety": insights.safety_score(operator_id)}
 
 
 @app.get("/api/operators/{operator_id}/score", tags=["operators"])
 def get_score(operator_id: str):
-    return safety_score(operator_id)
+    return insights.safety_score(operator_id)
 
 
 # ---------- tasks ----------
 
-def _predict_task(t: Dict) -> Dict:
-    res = ml.predict_task_time(ml.TaskTimeRequest(
-        task_type=t["task_type"], machine_id=t["machine_id"], operator_id=t["operator_id"],
-        volume_m3=t["volume_m3"], soil_type=t["soil_type"], slope_deg=t["slope_deg"],
-        temp_c=t["temp_c"], weather=t["weather"], time_of_day=t["time_of_day"],
-    ))
-    db.execute("UPDATE tasks SET predicted_minutes=?, predicted_low=?, predicted_high=? WHERE id=?",
-               [res.minutes, res.low, res.high, t["id"]])
-    return {**t, "predicted_minutes": res.minutes, "predicted_low": res.low, "predicted_high": res.high}
-
-
 @app.get("/api/tasks", tags=["tasks"])
 def list_tasks(operatorId: Optional[str] = None, machineId: Optional[str] = None,
                day: Optional[str] = None):
-    sql, params = "SELECT * FROM tasks WHERE date = ?", [day or date.today().isoformat()]
-    if operatorId:
-        sql, params = sql + " AND operator_id = ?", params + [operatorId]
-    if machineId:
-        sql, params = sql + " AND machine_id = ?", params + [machineId]
-    rows = db.query(sql + " ORDER BY machine_id, CASE time_of_day WHEN 'morning' THEN 0 ELSE 1 END, id", params)
-    return [r if r["predicted_minutes"] is not None else _predict_task(r) for r in rows]
+    """Tasks with ML estimate, range, explanation factors and live pace for the running task."""
+    return insights.tasks_for(machineId, operatorId, day)
 
 
 class TaskUpdate(BaseModel):
@@ -185,6 +156,7 @@ def update_task(task_id: int, body: TaskUpdate):
         raise HTTPException(404, "task not found")
     now = time.time()
     if body.status == "in_progress":
+        engine.state(t["machine_id"]).task_cycles = 0
         db.execute("UPDATE tasks SET status=?, started_at=? WHERE id=?", [body.status, now, task_id])
     elif body.status == "done":
         started = t["started_at"] or now
@@ -193,7 +165,7 @@ def update_task(task_id: int, body: TaskUpdate):
     else:
         db.execute("UPDATE tasks SET status=?, started_at=NULL, finished_at=NULL, actual_minutes=NULL "
                    "WHERE id=?", [body.status, task_id])
-    return db.one("SELECT * FROM tasks WHERE id = ?", [task_id])
+    return insights.with_pace(insights.ensure_prediction(db.one("SELECT * FROM tasks WHERE id = ?", [task_id])))
 
 
 # ---------- incidents & insights ----------
@@ -282,11 +254,105 @@ def create_booking(body: Booking):
     return db.one("SELECT * FROM bookings WHERE id = ?", [bid])
 
 
+class SimResult(BaseModel):
+    operatorId: str
+    score: float
+    avgReactionMs: Optional[float] = None
+    hazards: int = 0
+    missed: int = 0
+
+
+@app.post("/api/training/sim-result", tags=["training"])
+def sim_result(body: SimResult):
+    """Hazard-response simulator result; counts as the 'hazard-sim' training module."""
+    db.insert("training_progress", {"operator_id": body.operatorId, "module_id": "hazard-sim",
+                                    "score": round(body.score, 1), "ts": time.time()})
+    return {"ok": True, "passed": body.score >= 60}
+
+
+# ---------- shift report ----------
+
+@app.get("/api/shift/{machine_id}", tags=["shift"])
+def shift_live(machine_id: str):
+    """Current shift stats and averages so far."""
+    return insights.shift_report(machine_id)
+
+
+class EndShift(BaseModel):
+    lang: str = "en"
+
+
+@app.post("/api/shift/{machine_id}/end", tags=["shift"])
+async def end_shift(machine_id: str, body: EndShift = EndShift()):
+    """Close the shift: final stats + AI-written summary, saved; counters restart."""
+    report = insights.shift_report(machine_id)
+    summary = await copilot.shift_summary(report, body.lang)
+    rid = insights.save_shift_report(report, summary["summary"], summary["source"])
+    ms = engine.state(machine_id)
+    engine.start_shift(ms, (ms.operator or {}).get("id"))
+    return {"id": rid, **report, **summary}
+
+
+@app.get("/api/shift-reports", tags=["shift"])
+def shift_reports(machineId: Optional[str] = None, operatorId: Optional[str] = None, limit: int = 20):
+    sql, params = "SELECT * FROM shift_reports WHERE 1=1", []
+    if machineId:
+        sql, params = sql + " AND machine_id = ?", params + [machineId]
+    if operatorId:
+        sql, params = sql + " AND operator_id = ?", params + [operatorId]
+    rows = db.query(sql + " ORDER BY end DESC LIMIT ?", params + [limit])
+    for r in rows:
+        r["stats"] = json.loads(r["stats"])
+    return rows
+
+
+# ---------- co-pilot ----------
+
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class ChatRequest(BaseModel):
+    machineId: str
+    message: str
+    history: List[ChatTurn] = []
+    lang: str = "en"
+
+
+@app.post("/api/copilot/chat", tags=["copilot"])
+async def copilot_chat(body: ChatRequest):
+    return await copilot.chat(body.machineId, body.message, [h.model_dump() for h in body.history], body.lang)
+
+
+class BriefingRequest(BaseModel):
+    machineId: str
+    lang: str = "en"
+
+
+@app.post("/api/copilot/briefing", tags=["copilot"])
+async def copilot_briefing(body: BriefingRequest):
+    return await copilot.briefing(body.machineId, body.lang)
+
+
+# ---------- supervisor ----------
+
+@app.get("/api/impact", tags=["supervisor"])
+def impact():
+    return insights.impact()
+
+
+@app.get("/api/leaderboard", tags=["supervisor"])
+def leaderboard():
+    return insights.leaderboard()
+
+
 # ---------- meta ----------
 
 @app.get("/health", tags=["meta"])
 def health():
-    return {"ok": True, "models": sorted(ml.MODELS), "machinesOnline":
+    return {"ok": True, "models": sorted(ml.MODELS), "copilot": "claude" if copilot.client() else "offline",
+            "machinesOnline":
             [m.machine_id for m in engine.machines.values() if m.online]}
 
 

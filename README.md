@@ -38,6 +38,8 @@ npm run dev                          # http://localhost:5173
 
 API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python seed.py`.
 
+**Voice co-pilot with Claude:** set `ANTHROPIC_API_KEY` (or run `ant auth login`) before starting the backend. Without credentials the co-pilot still works in offline mode (rule-based answers from the same live data). Voice input needs Chrome or Edge.
+
 ## Folders
 
 | Folder | What |
@@ -45,7 +47,7 @@ API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python see
 | `data/` | `generate.py` makes the 4 synthetic training datasets |
 | `backend/` | FastAPI app: ML (`ml.py`, `train.py`), live pipeline + alerts (`engine.py`), REST (`main.py`), SQLite (`db.py`, `seed.py`), training content (`training.py`) |
 | `simulator/` | `sim.py` virtual machines |
-| `dashboard/` | React (Vite) dashboard: Live, Camera, Tasks, Incidents, Training, Simulator pages. Intentionally plain, to be restyled |
+| `dashboard/` | React (Vite) dashboard: Live, Camera, Tasks, Shift, Incidents, Training, Supervisor, Simulator pages + floating voice co-pilot. Intentionally plain, to be restyled |
 | `docs/` | `CONTRACT.md` API formats · `TEAM.md` who does what next |
 
 ## Features vs problem statement
@@ -61,6 +63,18 @@ API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python see
 | Unusual behavior | Idle timer alert + IsolationForest on 15-min usage windows (idling, unsafe operation, fuel waste) |
 | Task time estimation | RandomForest on task type, volume, soil, slope, weather, operator experience |
 | Extra | Engine fault classifier, ML speed advisor + overspeed alert, drowsiness (MediaPipe + optional Teachable Machine), operator safety score |
+
+## Differentiators
+
+| Feature | What it does |
+|---|---|
+| Voice co-pilot (Claude) | Hands-free Q&A from live data ("why the alert?", "how long left?"), start-of-shift briefing, speaks critical alerts aloud, English + Indian languages |
+| Predictive warnings | Overheat countdown from the temperature trend before the limit is hit; live task pace ("finishes 12 min late") from load cycles |
+| Explainable estimates | Each task time shows its top factors ("rock soil +49 min, 12° slope +8 min") |
+| Shift report | End of shift: totals, averages, peaks, fuel cost, CO₂, grade, highlights, and an AI-written summary; printable, saved |
+| Hazard response simulator | 60 s training drill (worker, seatbelt, slope, overheat) scored on reaction time, feeds the safety score |
+| Supervisor view | Fleet table, operator safety ranking, business impact (idle fuel cost, CO₂, yearly saving if idling halved) |
+| Machine view | Live tilt drawing of the machine and a proximity radar |
 
 Model metrics: `backend/RESULTS.md`.
 

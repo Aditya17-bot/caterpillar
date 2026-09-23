@@ -6,8 +6,11 @@ import Tasks from "./pages/Tasks.jsx";
 import Incidents from "./pages/Incidents.jsx";
 import Training from "./pages/Training.jsx";
 import Simulator from "./pages/Simulator.jsx";
+import Shift from "./pages/Shift.jsx";
+import Supervisor from "./pages/Supervisor.jsx";
+import CoPilot from "./CoPilot.jsx";
 
-const PAGES = ["Live", "Camera", "Tasks", "Incidents", "Training", "Simulator"];
+const PAGES = ["Live", "Camera", "Tasks", "Shift", "Incidents", "Training", "Supervisor", "Simulator"];
 const MACHINE_IDS = ["EXC-001", "EXC-002", "LDR-001", "LDR-002", "DOZ-001"];
 
 export default function App() {
@@ -61,7 +64,10 @@ export default function App() {
         {page === "Incidents" && <Incidents {...props} />}
         {page === "Training" && <Training {...props} />}
         {page === "Simulator" && <Simulator {...props} />}
+        {page === "Shift" && <Shift {...props} />}
+        {page === "Supervisor" && <Supervisor {...props} />}
       </main>
+      <CoPilot machineId={machineId} feed={live.feed} />
     </div>
   );
 }

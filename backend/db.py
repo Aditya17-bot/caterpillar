@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     operator_id TEXT, machine_id TEXT, date TEXT, task_type TEXT, site TEXT,
     volume_m3 REAL, soil_type TEXT, weather TEXT, time_of_day TEXT, slope_deg REAL, temp_c REAL,
     status TEXT DEFAULT 'pending', predicted_minutes REAL, predicted_low REAL, predicted_high REAL,
-    started_at REAL, finished_at REAL, actual_minutes REAL
+    started_at REAL, finished_at REAL, actual_minutes REAL, factors TEXT
 );
 CREATE TABLE IF NOT EXISTS incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS usage_windows (
 CREATE TABLE IF NOT EXISTS training_progress (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id TEXT, module_id TEXT, score REAL, ts REAL
+);
+CREATE TABLE IF NOT EXISTS shift_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    machine_id TEXT, operator_id TEXT, start REAL, end REAL, stats TEXT, summary TEXT, source TEXT
 );
 CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,8 +61,16 @@ def conn() -> sqlite3.Connection:
     return c
 
 
+# columns added after the first release: (table, column, type)
+MIGRATIONS = [("tasks", "factors", "TEXT")]
+
+
 def init() -> None:
     conn().executescript(SCHEMA)
+    for table, col, typ in MIGRATIONS:
+        cols = {r["name"] for r in query(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            conn().execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
     conn().commit()
 
 

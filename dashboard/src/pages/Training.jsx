@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { get, send } from "../api.js";
+import HazardSim from "../HazardSim.jsx";
 
 export default function Training({ operatorId: liveOperator }) {
   const [operators, setOperators] = useState([]);
@@ -73,6 +74,8 @@ export default function Training({ operatorId: liveOperator }) {
           {data.recommended.map((id) => data.modules.find((m) => m.id === id)?.title).join(", ")}
         </p>
       )}
+
+      <HazardSim operatorId={operatorId} onDone={load} />
 
       <div className="modules">
         {data.modules.map((m) => (
