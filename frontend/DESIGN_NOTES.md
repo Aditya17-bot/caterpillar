@@ -26,18 +26,21 @@ No dependencies were added.
 ## Verification — 2026-09-23
 
 - `npm run build`: passes (TypeScript + Vite).
-- All 18 routes checked in LIVE with the backend and all five simulated machines,
+- All 19 routes checked in LIVE with the backend and all five simulated machines,
   then in DEMO with backend and simulator stopped. No uncaught application errors,
   horizontal page overflow, or axe WCAG 2 A/AA violations at 1280×800.
 - Routes: `/`, `/schedule`, `/fleet`, `/live-operation`, `/safety`, `/machine-health`,
   `/analytics`, `/training`, `/incidents`, `/notifications`, `/site-map`, `/cameras`,
   `/shift`, `/maintenance`, `/supervisor`, `/operation/rfid`, `/operation/preop`,
-  `/operation/debrief`.
+  `/operation/debrief`, `/login`.
 - Command Center and Live Operation visually checked at 1920×1080, 1280×800,
   and 390×844. Collapsed navigation checked at 800px. Reduced-motion mode checked.
 - LIVE and DEMO: seatbelt scenario → critical takeover → acknowledge (hazard remains)
   → reset simulation; cab view and Escape; navigation. LIVE: machine switching,
   new-login inspection submission, black-box focus/Escape, and co-pilot briefing.
+- Upstream operator login is preserved: simulated RFID, denied badge, simulated face
+  login, session persistence, and desktop/mobile logout checked. Convex remains optional
+  and its cloud-backed path was not configured for these local checks.
 - Test backend ran from a temporary copy so generated data/models did not change this repo.
 
 ## Limits and follow-ups
