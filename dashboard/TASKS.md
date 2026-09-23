@@ -49,4 +49,4 @@ Use a local mock: a `setInterval` that emits fake telemetry/alerts matching the 
 9. [ ] Polish: responsive (tablet in a cab), dark theme, smooth alert animations.
 
 ## Done when
-With `npm run sim` running on the gateway, every page shows live data, and triggering each scenario shows the right alert.
+With the simulator running, every page shows live data, and triggering each scenario shows the right alert.
