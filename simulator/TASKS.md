@@ -1,6 +1,6 @@
 # Member 1: Virtual Machine Simulator + Demo (`simulator/`)
 
-Branch: `simulator`. Read `docs/CONTRACT.md` sections 1 and 2. You send exactly that JSON.
+Work on the `test` branch. Read `docs/CONTRACT.md` sections 1 and 2. You send exactly that JSON.
 
 ## Why no real hardware
 We don't build physical hardware. Instead you build a **virtual CAT machine** that behaves like the ESP32 + sensors would, so the whole system is demoable anywhere. For the "we thought about hardware" story, you also design the circuit in **Wokwi** (free online ESP32 simulator) and show it in the pitch.

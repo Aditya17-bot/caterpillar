@@ -1,6 +1,6 @@
 # Member 3: Backend Gateway (`gateway/`)
 
-Branch: `gateway`. You own `docs/CONTRACT.md`. You're the glue between hardware, ML and dashboard.
+Work on the `test` branch. You own `docs/CONTRACT.md`. You're the glue between hardware, ML and dashboard.
 
 ## Goal
 Node.js + Express on port 4000: receives telemetry, runs alert rules, calls the ML service, stores to MongoDB, pushes live data over socket.io.

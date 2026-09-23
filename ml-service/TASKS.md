@@ -1,6 +1,6 @@
 # Member 2: Machine Learning (`ml-service/`, `data/`)
 
-Branch: `ml`. Read `docs/CONTRACT.md` section 3. It defines the exact request/response for each endpoint.
+Work on the `test` branch. Read `docs/CONTRACT.md` section 3. It defines the exact request/response for each endpoint.
 
 ## Goal
 FastAPI service on port 8000 serving 4 scikit-learn models, plus a Teachable Machine drowsiness model for the dashboard.

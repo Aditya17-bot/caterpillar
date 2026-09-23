@@ -14,14 +14,14 @@ Nobody waits for anybody. Everyone builds against `CONTRACT.md` using fake data 
 - Gateway: `POST /api/telemetry` re-emits over socket.io. `/health`.
 - ML: FastAPI with 4 dummy endpoints.
 - Dashboard: Vite app + socket hook, prints live telemetry on screen.
-- **Checkpoint:** run all 4 on one laptop. The number on the dashboard changes every second. Merge all branches to `main`.
+- **Checkpoint:** run all 4 on one laptop. The number on the dashboard changes every second. Push to `test`; merge `test` into `main` once it works.
 
 ## Phase 2: Real features (bulk of time)
 - Simulator: control panel, sliders, scenario buttons.
 - Gateway: MongoDB, rules engine, incidents, tasks, training APIs.
 - ML: synthetic data, train real models, Teachable Machine drowsiness.
 - Dashboard: cockpit, tasks, incident log, training hub.
-- **Checkpoint every ~3 h:** merge to `main`, run everything together, fix contract mismatches.
+- **Checkpoint every ~3 h:** pull `test`, run everything together, fix contract mismatches.
 
 ## Phase 3: Integrate & polish (last ~4 h)
 - Real ML models plugged into the gateway, predictions on the dashboard.

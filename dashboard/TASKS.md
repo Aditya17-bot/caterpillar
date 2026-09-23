@@ -1,6 +1,6 @@
 # Member 4: Frontend Dashboard (`dashboard/`)
 
-Branch: `dashboard`. Read `docs/CONTRACT.md` sections 4 and 5 for the socket events and REST endpoints.
+Work on the `test` branch. Read `docs/CONTRACT.md` sections 4 and 5 for the socket events and REST endpoints.
 
 ## Goal
 React live dashboard for the operator: the face of the project. Judges mostly see this, so make it clean and CAT-themed (black/yellow `#FFCD11`).
