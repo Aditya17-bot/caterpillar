@@ -1,4 +1,5 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom'
 import Icon from '../common/Icon'
 import { useAppStore } from '../../store/useAppStore'
 
@@ -20,74 +21,29 @@ const navItems = [
   { path: '/notifications', label: 'Notifications & Alerts', icon: 'notification_important' },
 ]
 
-const demoJumps: { label: string; to: string; action?: () => void }[] = [
-  { label: '1. RFID Operator Scan', to: '/operation/rfid' },
-  { label: '2. Schedule & Machine Select', to: '/schedule' },
-  { label: '3. Pre-Operation Safety Check', to: '/operation/preop' },
-  { label: '4. Live Operation / Simulation', to: '/live-operation' },
-  { label: '5. Mission Debrief', to: '/operation/debrief' },
+
+const steps = [
+  { label: 'RFID · Identify operator', to: '/operation/rfid' },
+  { label: 'Schedule · Select a task', to: '/schedule' },
+  { label: 'Pre-op · Inspect machine', to: '/operation/preop' },
+  { label: 'Live · Operate safely', to: '/live-operation' },
+  { label: 'Debrief · Review shift', to: '/operation/debrief' },
 ]
-
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate()
-  const resetDemo = useAppStore((s) => s.resetDemo)
-
-  return (
-    <aside className="fixed left-0 top-16 bottom-0 w-72 bg-surface-dim z-40 flex flex-col justify-between overflow-y-auto">
-      <div className="p-space-md">
-        <div className="font-label-sm text-label-sm text-outline tracking-widest uppercase px-space-sm mb-space-sm">
-          Flight &amp; Machinery Operations
-        </div>
-        <nav className="flex flex-col gap-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-space-md py-2 transition-all rounded font-label-md text-label-md uppercase tracking-wider ${
-                  isActive
-                    ? 'bg-primary-container text-on-primary-container font-bold'
-                    : 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface'
-                }`
-              }
-            >
-              <Icon name={item.icon} className="text-[20px]" />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
+  const { pathname } = useLocation()
+  const resetDemo = useAppStore(s => s.resetDemo)
+  const [visited, setVisited] = useState<string[]>([])
+  useEffect(() => { if (steps.some(s => s.to === pathname)) setVisited(v => v.includes(pathname) ? v : [...v, pathname]) }, [pathname])
+  return <>
+    {open && <button aria-label="Close navigation" className="fixed inset-0 top-[72px] bg-black/60 z-30 min-[1101px]:hidden" onClick={onClose} />}
+    <aside id="app-navigation" className={`app-sidebar ${open ? 'is-open' : ''}`}>
+      <div className="p-4 border-b border-surface-variant">
+        <div className="flex justify-between items-center mb-2"><span className="eyebrow">Demo journey</span><span className="text-xs text-on-surface-variant">{visited.length}/5 visited</span></div>
+        <nav aria-label="Demo journey">{steps.map((step, i) => <Link key={step.to} to={step.to} onClick={onClose} aria-current={pathname === step.to ? 'step' : undefined} className="journey-step"><span className="journey-dot">{visited.includes(step.to) && pathname !== step.to ? <Icon name="check" className="text-sm" /> : i + 1}</span>{step.label}</Link>)}</nav>
       </div>
-      <div className="p-space-md bg-surface-container-lowest flex flex-col gap-space-sm">
-        <div className="flex flex-col gap-1">
-          <label className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
-            <Icon name="play_circle" className="text-[14px] text-secondary" />
-            Demo Workflow Flowswitch
-          </label>
-          <select
-            className="w-full bg-surface-container px-space-sm py-1.5 text-on-surface font-body-md text-body-md rounded focus:outline-none focus:ring-1 focus:ring-primary"
-            onChange={(e) => {
-              const target = demoJumps.find((d) => d.label === e.target.value)
-              if (target) navigate(target.to)
-            }}
-            defaultValue={demoJumps[0].label}
-          >
-            {demoJumps.map((d) => (
-              <option key={d.label}>{d.label}</option>
-            ))}
-          </select>
-        </div>
-        <button
-          className="w-full py-2.5 px-space-md bg-error-container text-error hover:bg-error hover:text-on-error transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2"
-          onClick={() => {
-            resetDemo()
-            navigate('/operation/rfid')
-          }}
-        >
-          <Icon name="emergency" className="text-[20px]" />
-          E-STOP / RESET DEMO
-        </button>
-      </div>
+      <nav aria-label="Main navigation" className="p-3 space-y-1">{navItems.map(item => <NavLink key={item.path} to={item.path} end={item.path === '/'} onClick={onClose} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon name={item.icon} className="text-xl" />{item.label}</NavLink>)}</nav>
+      <div className="p-4 border-t border-surface-variant"><button className="btn-secondary w-full text-xs" onClick={() => { resetDemo(); setVisited([]); navigate('/operation/rfid'); onClose() }}><Icon name="restart_alt" className="text-lg" />Restart demo journey</button></div>
     </aside>
-  )
+  </>
 }

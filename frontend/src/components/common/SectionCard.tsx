@@ -21,7 +21,7 @@ const paddingBySize = {
 
 export default function SectionCard({ children, className = '', variant = 'low', padding = 'lg' }: SectionCardProps) {
   return (
-    <div className={`${surfaceByVariant[variant]} ${paddingBySize[padding]} rounded-xl shadow-md ${className}`}>
+    <div className={`${surfaceByVariant[variant]} ${paddingBySize[padding]} panel rounded-xl ${className}`}>
       {children}
     </div>
   )

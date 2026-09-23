@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Header from './Header'
 import Sidebar from './Sidebar'
 import Icon from '../common/Icon'
@@ -61,6 +61,17 @@ export default function AppShell() {
   // Runs at the shell level (not per-page) so elapsed time and telemetry
   // keep advancing consistently while an operation is running, regardless
   // of which screen the operator navigates to.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [cabMode, setCabMode] = useState(false)
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const toggle = () => setCabMode(v => !v)
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') { setCabMode(false); setMenuOpen(false) } }
+    window.addEventListener('cab:toggle', toggle)
+    window.addEventListener('keydown', escape)
+    return () => { window.removeEventListener('cab:toggle', toggle); window.removeEventListener('keydown', escape) }
+  }, [])
+  useEffect(() => { setCabMode(false); setMenuOpen(false) }, [pathname])
   const tick = useAppStore((s) => s.tick)
   useEffect(() => {
     const id = setInterval(() => tick(), 1000)
@@ -77,11 +88,13 @@ export default function AppShell() {
 
   return (
     <LiveContext.Provider value={live}>
-      <div className="min-h-screen bg-surface">
-        <Header />
-        <Sidebar />
-        <div className="pl-72">
-          <main className="w-full pt-16 bg-surface min-h-screen">
+      <div className={`min-h-screen bg-surface ${cabMode ? 'cab-mode' : ''}`}>
+        <a href="#main-content" className="skip-link">Skip to main content</a>
+        <Header menuOpen={menuOpen} onMenuToggle={() => setMenuOpen(v => !v)} />
+        <Sidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+        <div className="app-content">
+          <main id="main-content" tabIndex={-1} className="w-full bg-surface min-h-screen">
+            {cabMode && <div className="flex justify-end p-3"><button className="btn-secondary" onClick={() => setCabMode(false)}><Icon name="fullscreen_exit" />Exit cab view · Esc</button></div>}
             <SosBanner sos={live.sos} machineId={machineId} />
             {machine?.inspection?.status === 'pending' && skipInspection[machineId ?? ''] && (
               <div className="bg-primary-container/20 text-primary px-space-lg py-2 font-body-md text-body-md flex items-center gap-space-sm">
