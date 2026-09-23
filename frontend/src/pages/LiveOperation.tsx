@@ -2,124 +2,84 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
-import TelemetryStat from '../components/common/TelemetryStat'
+import PageHeader from '../components/common/PageHeader'
 import ProgressBar from '../components/common/ProgressBar'
-import StatusPill from '../components/common/StatusPill'
-import AlertBanner from '../components/domain/AlertBanner'
-import AIInsightPanel from '../components/domain/AIInsightPanel'
 import ScenarioTriggerDeck from '../components/domain/ScenarioTriggerDeck'
+import { SpeedGauge, TiltIndicator, ProximityRadar, StatusLight } from '../components/instruments/Instruments'
 import { useAppStore, selectActiveMachine } from '../store/useAppStore'
 import { formatHMS } from '../lib/format'
-import { getScenarioDefinition } from '../mock/scenarios'
 import { useLiveData } from '../services/useBackendSync'
 import SiteMapJsx from '../legacy/pages/SiteMap.jsx'
+import type { AlertCategory } from '../types/domain'
 
 const SiteMap = SiteMapJsx as any
-
+const instructions: Partial<Record<AlertCategory, string>> = {
+  seatbelt: 'Stop safely and fasten your seatbelt.', proximity: 'Stop movement and check the surrounding area.',
+  slope: 'Stop safely and reposition on stable ground.', drowsiness: 'Stop safely and take a rest break.',
+  overheat: 'Reduce load and stop safely to check the engine.', oil_pressure: 'Stop safely and request maintenance.',
+  overspeed: 'Reduce speed to the AI-advised limit.', engine: 'Stop safely and review the engine fault.',
+}
 export default function LiveOperation() {
   const navigate = useNavigate()
   const machine = useAppStore(selectActiveMachine)
-  const activeTask = useAppStore((s) => s.tasks.find((t) => t.id === s.selectedTaskId))
-  const operator = useAppStore((s) => s.operator)
-  const telemetry = useAppStore((s) => s.liveTelemetry)
-  const speedRec = useAppStore((s) => s.speedRecommendation)
-  const drowsiness = useAppStore((s) => s.drowsiness)
-  const copilotMessage = useAppStore((s) => s.copilotMessage)
-  const elapsedSec = useAppStore((s) => s.elapsedSec)
-  const workCompleted = useAppStore((s) => s.workCompletedM3)
-  const target = useAppStore((s) => s.targetVolumeM3)
-  const operationRunning = useAppStore((s) => s.operationRunning)
-  const activeScenario = useAppStore((s) => s.activeScenario)
-  const alerts = useAppStore((s) => s.alerts)
-  const triggerScenario = useAppStore((s) => s.triggerScenario)
-  const resolveActiveEvent = useAppStore((s) => s.resolveActiveEvent)
-  const startOperation = useAppStore((s) => s.startOperation)
-  const completeTask = useAppStore((s) => s.completeTask)
-  const backendOnline = useAppStore((s) => s.backendOnline)
-  const selectMachine = useAppStore((s) => s.selectMachine)
+  const activeTask = useAppStore(s => s.tasks.find(t => t.id === s.selectedTaskId))
+  const telemetry = useAppStore(s => s.liveTelemetry)
+  const speedRec = useAppStore(s => s.speedRecommendation)
+  const drowsiness = useAppStore(s => s.drowsiness)
+  const copilotMessage = useAppStore(s => s.copilotMessage)
+  const elapsedSec = useAppStore(s => s.elapsedSec)
+  const workCompleted = useAppStore(s => s.workCompletedM3)
+  const target = useAppStore(s => s.targetVolumeM3)
+  const operationRunning = useAppStore(s => s.operationRunning)
+  const activeScenario = useAppStore(s => s.activeScenario)
+  const alerts = useAppStore(s => s.alerts)
+  const triggerScenario = useAppStore(s => s.triggerScenario)
+  const acknowledgeAlert = useAppStore(s => s.acknowledgeAlert)
+  const resolveActiveEvent = useAppStore(s => s.resolveActiveEvent)
+  const startOperation = useAppStore(s => s.startOperation)
+  const completeTask = useAppStore(s => s.completeTask)
+  const backendOnline = useAppStore(s => s.backendOnline)
+  const selectMachine = useAppStore(s => s.selectMachine)
+  const interlocks = useAppStore(s => s.interlockSensors)
   const live = useLiveData()
-
-  useEffect(() => {
-    if (!operationRunning) startOperation()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const openAlert = alerts.find((a) => !a.resolved && (!backendOnline || a.machineId === machine.id))
+  useEffect(() => { if (!operationRunning) startOperation() }, [])
+  const activeAlerts = alerts.filter(a => !a.resolved && (!a.machineId || a.machineId === machine.id))
+  const critical = activeAlerts.find(a => a.severity === 'critical' && !a.acknowledged)
   const eta = machine.ml?.overheatEtaSec
-  const scenarioDef = getScenarioDefinition(activeScenario)
-  const speedExceeded = telemetry.speedKmh > speedRec.recommendedSpeedKmh + 2
-
-  return (
-    <div className="flex flex-col w-full">
-      {openAlert ? (
-        <AlertBanner severity={openAlert.severity} title={openAlert.title} message={openAlert.message} tag="OVERRIDE ENGAGED" />
-      ) : (
-        <AlertBanner severity="info" title="All Systems Nominal" message="No active hazards detected across monitored subsystems." />
-      )}
-
-      <section className="w-full bg-surface-container-lowest px-margin-lg py-space-md shadow-md">
-        <div className="flex flex-wrap items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-lg flex-wrap">
-            <div className="flex items-center gap-space-sm bg-surface-container-high px-space-md py-space-xs rounded">
-              <Icon name="forklift" className="text-primary text-[22px]" />
-              <div className="flex flex-col">
-                <span className="font-label-sm text-label-sm text-outline uppercase tracking-widest">Active Machinery</span>
-                <span className="font-headline-md text-headline-md text-primary leading-tight font-bold">
-                  {machine.model.split(' ').slice(0, 2).join(' ')} <span className="font-body-md text-body-md text-on-surface-variant font-normal">#{machine.id}</span>
-                </span>
-              </div>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm text-outline uppercase tracking-widest">Current Job / Task</span>
-              <span className="font-headline-md text-headline-md text-on-surface leading-tight font-bold">{activeTask?.title ?? '—'}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm text-outline uppercase tracking-widest">Operator In Cab</span>
-              <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-tertiary animate-pulse" />
-                <span className="font-headline-md text-headline-md text-on-surface font-semibold">{operator.name}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-space-xl flex-wrap">
-            <div className="flex flex-col min-w-[200px]">
-              <div className="flex justify-between font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant mb-1">
-                <span>Payload Target</span>
-                <span className="font-telemetry-md text-body-md text-primary font-bold">
-                  {Math.round((workCompleted / target) * 100)}% ({workCompleted.toFixed(0)} / {target} m³)
-                </span>
-              </div>
-              <ProgressBar pct={(workCompleted / target) * 100} />
-            </div>
-            <div className="flex items-center gap-space-md bg-surface-container-low px-space-md py-1.5 rounded">
-              <div className="flex flex-col">
-                <span className="font-label-sm text-label-sm text-outline uppercase">Elapsed</span>
-                <span className="font-telemetry-md text-telemetry-md text-on-surface">{formatHMS(elapsedSec)}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="p-margin-lg grid grid-cols-12 gap-gutter-lg">
-        <div className="col-span-12 xl:col-span-7 flex flex-col gap-space-md">
-          <SectionCard variant="lowest" padding="md" className="relative overflow-hidden">
-            <div className="flex items-center justify-between mb-space-sm px-space-sm">
-              <div className="flex items-center gap-2">
-                <Icon name="radar" className="text-secondary text-[20px]" />
-                <span className="font-label-md text-label-md uppercase tracking-wider text-on-surface font-bold">
-                  Tactical LiDAR &amp; Site Viewport // {scenarioDef.label}
-                </span>
-              </div>
-              <StatusPill label={backendOnline ? 'Live Site Map' : 'LiDAR Active'} token="primary" />
-            </div>
-            {backendOnline && live ? (
-              <div className="legacy">
-                <SiteMap live={live} machineId={machine.id} setMachineId={selectMachine} compact height={380} />
-              </div>
-            ) : (
-            <div className="relative w-full h-[380px] bg-surface-container-lowest overflow-hidden rounded flex items-center justify-center">
+  const belt = backendOnline ? (machine.seatbelt == null ? undefined : machine.seatbelt) : interlocks.find(i => i.id === 'seatbelt')?.state === 'pass'
+  const zone = backendOnline ? !!machine.zone : interlocks.find(i => i.id === 'geofence')?.state === 'fail'
+  return <div className="p-4 lg:p-6 space-y-4">
+    <PageHeader eyebrow={`${machine.id} / ${machine.model}`} title="Live operation" description={activeTask?.title ?? 'Select a task from your schedule.'} action={<button className="btn-secondary" onClick={() => window.dispatchEvent(new Event('cab:toggle'))}><Icon name="fullscreen" className="text-xl" />Cab view</button>} />
+    {machine.online === false && backendOnline && <div className="panel rounded-xl p-4 text-primary" role="status">Telemetry interrupted for {machine.id}. Readings may be stale; check the machine connection.</div>}
+    {critical && <section className="alert-takeover flex flex-wrap items-center gap-5" role="alert" aria-label="Critical safety alert">
+      <Icon name="report" filled className="text-5xl" /><div className="flex-1 min-w-[200px]"><p className="text-xs uppercase font-bold tracking-widest">Critical · {critical.title}</p><h2 className="text-2xl lg:text-3xl font-bold mt-2">{instructions[critical.category] ?? 'Stop safely and review the hazard.'}</h2><p className="mt-2 text-white/90">{critical.message}</p></div>
+      <button className="bg-white text-[#8b1720] rounded-xl px-6 py-4 font-bold" onClick={() => acknowledgeAlert(critical.id)}>Acknowledge</button>
+    </section>}
+    {activeAlerts.filter(a => a.id !== critical?.id).length > 0 && <div className="space-y-2" aria-label="Active hazards">{activeAlerts.filter(a => a.id !== critical?.id).map(a => <div key={a.id} className={`rounded-xl border p-3 flex flex-wrap items-center gap-3 ${a.severity === 'critical' ? 'border-error/50 bg-error-container/25 text-error' : 'border-primary/30 bg-primary/5 text-primary'}`}><Icon name="warning" className="text-xl" /><span className="font-semibold text-sm">{a.title}</span><span className="text-sm text-on-surface-variant flex-1">{a.message}</span><span className="text-xs font-bold">{a.acknowledged ? 'Acknowledged · hazard still active' : a.severity.toUpperCase()}</span>{!a.acknowledged && <button className="text-sm underline px-2" onClick={() => acknowledgeAlert(a.id)}>Acknowledge</button>}</div>)}</div>}
+    {!activeAlerts.length && <div className="flex items-center gap-2 text-tertiary text-sm"><Icon name="verified_user" className="text-lg" />No active alerts for {machine.id}<span className="text-on-surface-variant ml-auto text-xs">{backendOnline ? 'Live telemetry' : 'Demo readings'} · {formatHMS(elapsedSec)} elapsed</span></div>}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <StatusLight label="Seatbelt" value={belt == null ? 'No reading' : belt ? 'Fastened' : 'Unfastened'} state={belt == null ? 'unknown' : belt ? 'ok' : 'warn'} />
+      <StatusLight label="Work zone" value={zone ? 'Zone alert · check map' : 'No zone alert'} state={zone ? 'warn' : 'ok'} />
+      <StatusLight label="Operator attention" value={drowsiness.state === 'alert' ? 'No fatigue alert' : drowsiness.state === 'drowsy' ? 'Drowsiness detected' : 'Face not detected'} state={drowsiness.state === 'alert' ? 'ok' : drowsiness.state === 'no_face' ? 'unknown' : 'warn'} />
+    </div>
+    <div className="hud-grid">
+      <SectionCard className="!bg-[#151d28]">
+        <div className="flex justify-between items-center"><h2 className="font-bold text-lg">Speed guidance</h2><span className="eyebrow text-tertiary flex items-center gap-1"><Icon name="psychology" className="text-lg" />AI advised</span></div>
+        <SpeedGauge speed={telemetry.speedKmh} advised={speedRec.recommendedSpeedKmh} />
+        <div className="bg-tertiary/10 border border-tertiary/25 rounded-xl px-5 py-3 flex items-center justify-between"><span className="text-tertiary text-sm font-semibold">Advised for current terrain</span><span className="instrument-value text-3xl text-tertiary font-bold">{speedRec.recommendedSpeedKmh.toFixed(1)} <small className="text-sm">km/h</small></span></div>
+        <p className="mt-4 text-sm text-on-surface-variant leading-relaxed">{speedRec.reason}</p>
+        <div className="flex flex-wrap gap-2 mt-3">{speedRec.factors.slice(0, 3).map(f => <span key={f.label} className="text-xs px-2 py-1 rounded bg-surface-container-high text-on-surface-variant">{f.label}</span>)}</div>
+      </SectionCard>
+      <div className="space-y-4">
+        <SectionCard><div className="flex items-center justify-between mb-3"><h2 className="font-bold">Engine temperature</h2><Icon name="device_thermostat" className="text-primary text-2xl" /></div><div className="flex items-end justify-between gap-3"><div className={`instrument-value text-5xl font-bold ${telemetry.engineTempC > 100 ? 'text-error' : ''}`}>{telemetry.engineTempC.toFixed(0)}<span className="text-xl text-on-surface-variant"> °C</span></div><div className="text-right"><p className="eyebrow">Overheat forecast</p><p className={`instrument-value text-2xl mt-1 ${eta != null ? 'text-error' : 'text-on-surface-variant'}`}>{eta != null ? `${Math.floor(Math.max(0, eta) / 60)}:${String(Math.floor(Math.max(0, eta) % 60)).padStart(2, '0')}` : '—'}</p></div></div><div className="mt-4"><ProgressBar pct={Math.min(100, telemetry.engineTempC / 120 * 100)} token={telemetry.engineTempC > 100 ? 'error' : 'primary'} /></div><div className="flex justify-between text-xs text-on-surface-variant mt-2"><span>{eta != null ? 'Estimated time to 110°C' : 'No overheat forecast available'}</span><span>Critical &gt;110°C</span></div></SectionCard>
+        <SectionCard><h2 className="font-bold mb-2">Machine attitude</h2><TiltIndicator slope={telemetry.slopeDeg} /></SectionCard>
+        <SectionCard><h2 className="font-bold mb-2">Proximity radar</h2><ProximityRadar distance={machine.obstacleCm} /></SectionCard>
+      </div>
+    </div>
+    <section className="panel rounded-xl p-5 flex items-start gap-4 bg-primary/5"><div className="bg-primary text-on-primary p-2 rounded-lg"><Icon name="graphic_eq" className="text-2xl" /></div><div className="flex-1"><h2 className="eyebrow text-primary mb-2">Your co-pilot</h2><p className="text-lg leading-relaxed">{copilotMessage}</p></div><button className="btn-secondary hidden md:inline-flex" onClick={() => window.dispatchEvent(new Event('copilot:toggle'))}>Ask co-pilot</button></section>
+    <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr] gap-4">
+      <SectionCard><div className="flex justify-between mb-4"><h2 className="font-bold">Live site map</h2><button onClick={() => navigate('/site-map')} className="text-sm text-primary">Open map ↗</button></div>{backendOnline && live ? <div className="legacy"><SiteMap live={live} machineId={machine.id} setMachineId={selectMachine} compact height={300} /></div> : (
+            <div className="relative w-full h-[300px] bg-surface-container-lowest overflow-hidden rounded flex items-center justify-center">
               <svg className="absolute inset-0 w-full h-full opacity-40 text-secondary" viewBox="0 0 700 380">
                 <defs>
                   <pattern id="grid" width="35" height="35" patternUnits="userSpaceOnUse">
@@ -155,142 +115,13 @@ export default function LiveOperation() {
                 </div>
               )}
               <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between font-mono text-[10px] text-on-surface-variant">
-                <span>SITE: 42°18'04.2"N 89°22'19.1"W</span>
-                <span>SAT LOCK: 18 SVs</span>
+                <span>SITE OVERVIEW</span>
+                <span>ILLUSTRATIVE DEMO MAP</span>
               </div>
             </div>
-            )}
-          </SectionCard>
-
-          <div className="grid grid-cols-3 gap-1 bg-surface-container-low p-2 rounded">
-            {['Blind Right', 'Trench Load', 'Cabin Cognitive'].map((label) => (
-              <div
-                key={label}
-                onClick={() => navigate('/cameras')}
-                title="Open the camera AI (drowsiness + person detection)"
-                className="relative bg-surface-container-lowest h-24 rounded overflow-hidden flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-surface-container-high transition-colors"
-              >
-                <Icon name="videocam" className="text-[28px] text-primary" />
-                <span className="font-label-sm text-[10px] text-on-surface-variant uppercase">Open camera AI</span>
-                <div className="absolute top-1 left-2 flex items-center gap-1 bg-surface-container-high/90 px-1.5 py-0.2 rounded font-label-sm text-[9px] text-on-surface uppercase">
-                  CAM // {label}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="col-span-12 xl:col-span-5 flex flex-col gap-gutter-lg">
-          <SectionCard variant="lowest" className="relative overflow-hidden">
-            <div className="flex items-center justify-between pb-space-sm mb-space-md">
-              <div className="flex items-center gap-2">
-                <Icon name="psychology" className="text-primary-container text-[22px]" />
-                <span className="font-headline-md text-headline-md uppercase text-primary font-bold">AI Smart Speed Copilot</span>
-              </div>
-              <span className="px-2 py-0.5 bg-surface-container-highest text-primary-fixed-dim font-label-sm text-label-sm rounded uppercase font-bold tracking-widest">
-                MODEL: RF-CAT-V4.2
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-space-md mb-space-md">
-              <div className={`p-space-md rounded flex flex-col items-center justify-center text-center ${speedExceeded ? 'bg-error-container' : 'bg-surface-container-high'}`}>
-                <span className={`font-label-sm text-label-sm uppercase tracking-wider mb-1 ${speedExceeded ? 'text-on-error-container' : 'text-on-surface-variant'}`}>
-                  Current Speed
-                </span>
-                <span className={`font-telemetry-xl text-display-lg font-bold ${speedExceeded ? 'text-error animate-pulse' : 'text-on-surface'}`}>
-                  {Math.round(telemetry.speedKmh)}
-                </span>
-                <span className="font-telemetry-md text-telemetry-md text-on-surface-variant font-semibold">km/h</span>
-              </div>
-              <div className="bg-primary text-on-primary p-space-md rounded flex flex-col items-center justify-center text-center shadow-lg">
-                <span className="font-label-sm text-label-sm uppercase tracking-wider mb-1 font-bold">AI Recommended</span>
-                <span className="font-telemetry-xl text-display-lg font-extrabold">{Math.round(speedRec.recommendedSpeedKmh)}</span>
-                <span className="font-telemetry-md text-telemetry-md font-bold">km/h</span>
-              </div>
-            </div>
-
-            <AIInsightPanel
-              title="Random Forest Explainability"
-              modelBadge="LIVE"
-              reason={speedRec.reason}
-              confidencePct={speedRec.confidencePct}
-              factors={speedRec.factors}
-              metrics={[
-                { label: 'Slope', value: `${speedRec.slopeDeg}°`, token: 'primary' },
-                { label: 'Load', value: `${speedRec.loadPct}%`, token: 'secondary' },
-                { label: 'Vibration', value: `${speedRec.vibrationG}G`, token: speedRec.vibrationG > 1.5 ? 'error' : 'tertiary' },
-              ]}
-            />
-
-            <div className="mt-space-md p-space-md bg-surface-container-high rounded flex items-start gap-space-md shadow-inner">
-              <div className="w-10 h-10 rounded bg-primary-container text-on-primary-container flex items-center justify-center shrink-0">
-                <Icon name="smart_toy" className="text-[24px]" />
-              </div>
-              <p className="font-body-lg text-body-lg text-on-surface font-medium leading-relaxed">{copilotMessage}</p>
-            </div>
-          </SectionCard>
-
-          <SectionCard variant="lowest" className="grid grid-cols-2 gap-space-md">
-            <TelemetryStat label="Engine Temp" value={`${Math.round(telemetry.engineTempC)}°C`} token={telemetry.engineTempC > 100 ? 'error' : 'primary'} />
-            <TelemetryStat label="Oil Pressure" value={`${telemetry.oilPressurePsi} PSI`} token={telemetry.oilPressurePsi < 20 ? 'error' : 'tertiary'} />
-            <TelemetryStat label="Vibration" value={`${telemetry.vibrationG.toFixed(2)}G`} token={telemetry.vibrationG > 1.5 ? 'error' : 'tertiary'} />
-            <TelemetryStat label="Fuel" value={`${Math.round(telemetry.fuelPct)}%`} />
-            {backendOnline && (
-              <>
-                <TelemetryStat
-                  label="Overheat Forecast"
-                  value={eta != null ? `${Math.floor(eta / 60)}:${String(eta % 60).padStart(2, '0')}` : 'STABLE'}
-                  token={eta != null ? 'error' : 'tertiary'}
-                />
-                <TelemetryStat
-                  label="AI Fault Model"
-                  value={machine.ml?.fault ? machine.ml.fault.replace(/_/g, ' ').toUpperCase() : 'ENGINE OFF'}
-                  token={machine.ml?.fault && machine.ml.fault !== 'normal' ? 'error' : 'tertiary'}
-                />
-              </>
-            )}
-          </SectionCard>
-
-          <SectionCard variant="lowest" className="flex flex-col gap-space-sm">
-            <div className="flex items-center justify-between p-2 bg-surface-container rounded">
-              <span className="font-label-md text-label-md uppercase text-on-surface flex items-center gap-2">
-                <Icon name="psychology_alt" className="text-tertiary text-[20px]" />
-                Drowsiness Engine
-              </span>
-              <StatusPill
-                label={drowsiness.state === 'alert' ? `Alert ${drowsiness.confidencePct}%` : drowsiness.state.toUpperCase()}
-                token={drowsiness.state === 'alert' ? 'tertiary' : 'error'}
-              />
-            </div>
-          </SectionCard>
-
-          <div className="flex flex-col gap-space-sm">
-            {openAlert && (
-              <button
-                onClick={resolveActiveEvent}
-                className="w-full py-3 bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary font-headline-md text-label-md uppercase tracking-wider font-bold rounded flex items-center justify-center gap-2 transition-all shadow-lg"
-              >
-                <Icon name="check_circle" className="text-[20px]" />
-                Apply AI Recommendation &amp; Resolve
-              </button>
-            )}
-            <button
-              onClick={() => {
-                completeTask()
-                navigate('/operation/debrief')
-              }}
-              className="w-full py-3 bg-surface-container-high text-on-surface hover:bg-surface-bright font-headline-md text-label-md uppercase tracking-wider font-bold rounded flex items-center justify-center gap-2 transition-all"
-            >
-              <Icon name="flag" className="text-[20px]" />
-              Complete Task &amp; View Debrief
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="px-margin-lg pb-margin-lg">
-        <ScenarioTriggerDeck activeScenario={activeScenario} onTrigger={triggerScenario} />
-      </div>
+      )}</SectionCard>
+      <SectionCard className="flex flex-col gap-5"><h2 className="font-bold">Shift progress</h2><div><div className="flex justify-between text-sm mb-3"><span>Material moved</span><span className="instrument-value">{workCompleted.toFixed(0)} / {target} m³</span></div><ProgressBar pct={target > 0 ? Math.min(100, workCompleted / target * 100) : 0} /></div><div className="grid grid-cols-3 gap-3">{[['Fuel', `${telemetry.fuelPct.toFixed(0)}%`], ['Oil', `${telemetry.oilPressurePsi.toFixed(0)} psi`], ['Vibration', `${telemetry.vibrationG.toFixed(2)} g`]].map(([label, value]) => <div key={label}><p className="eyebrow">{label}</p><p className="instrument-value text-lg mt-2">{value}</p></div>)}</div><button className="btn-secondary" onClick={() => navigate('/cameras')}><Icon name="videocam" className="text-xl" />Open safety cameras</button><button className="btn-primary mt-auto" onClick={() => { completeTask(); navigate('/operation/debrief') }}><Icon name="flag" className="text-xl" />Complete task & review</button></SectionCard>
     </div>
-  )
+    <details className="demo-controls panel rounded-xl p-4"><summary className="cursor-pointer text-sm font-semibold">Demo controls · introduce a scenario</summary><div className="mt-4"><ScenarioTriggerDeck activeScenario={activeScenario} onTrigger={triggerScenario} />{activeAlerts.length > 0 && <button className="btn-secondary mt-4" onClick={resolveActiveEvent}>Reset simulated hazard</button>}</div></details>
+  </div>
 }
