@@ -33,11 +33,11 @@ Enable CORS. Add `GET /health`.
 Anomaly `reason` should be human readable: `excessive_idling`, `harsh_operation`, `abnormal_temp`, etc. (use simple rules to label what the IsolationForest flagged).
 
 ## Tasks
-1. [ ] FastAPI skeleton + dummy endpoints (Pydantic models matching the contract).
-2. [ ] `data/generate.py` synthetic data.
-3. [ ] Training notebooks/scripts in `ml-service/train/`, saving `.joblib` to `ml-service/models/` (gitignored, so add a `train_all.py` that rebuilds them).
-4. [ ] Real models behind the endpoints.
-5. [ ] Record metrics (R², MAE, accuracy, confusion matrix) in `ml-service/RESULTS.md`. Judges love numbers and charts.
+1. [x] FastAPI skeleton + dummy endpoints (Pydantic models matching the contract).
+2. [x] `data/generate.py` synthetic data.
+3. [x] Training notebooks/scripts in `ml-service/train/`, saving `.joblib` to `ml-service/models/` (gitignored, so add a `train_all.py` that rebuilds them).
+4. [x] Real models behind the endpoints.
+5. [x] Record metrics (R², MAE, accuracy, confusion matrix) in `ml-service/RESULTS.md`. Judges love numbers and charts.
 6. [ ] Teachable Machine: Image project, classes `alert` / `drowsy` (eyes closed, head nodding) / `no_face`. Collect webcam samples from all 4 teammates. Export as TensorFlow.js, upload, and give the model URL to Member 4.
 7. [ ] Bonus: feature importance plot for the speed model (shows slope matters).
 

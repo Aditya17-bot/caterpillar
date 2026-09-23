@@ -32,13 +32,43 @@
 
 ## 3. ML service (gateway → ml-service)
 
-`POST /predict/speed` `{ "accel": {...}, "gyro": {...}, "slopeDeg": 7.3 }` → `{ "speedKmh": 8.5 }`
+All fields camelCase. Only **bold** fields are required; the rest have defaults. Live docs: `http://localhost:8000/docs`. Bad enum values return 422.
 
-`POST /predict/fault` `{ "engineTempC": 92.4, "vibration": 0.42, "obstacleCm": 145 }` → `{ "fault": "overheating", "prob": 0.87 }`
+**`POST /predict/speed`**: call on every telemetry tick
+```json
+{ "slopeDeg": 7.3, "machineType": "excavator", "accel": {"x":0.12,"y":-0.03,"z":9.78},
+  "gyro": {"x":0.5,"y":1.2,"z":-0.1}, "vibration": 0.42, "loadPct": 50, "surface": "gravel" }
+```
+Required: **slopeDeg**. `machineType`: excavator | loader | dozer. `surface`: asphalt | gravel | sand | mud. If `accel` is missing it's derived from the slope.
+→ `{ "speedKmh": 8.5, "slopeDeg": 7.3, "advisory": "Normal terrain." }`
 
-`POST /predict/task-time` `{ "machineId": "EXC-001", "taskType": "trenching", "slopeDeg": 7.3, "engineTempC": 92.4, "operatorId": "OP-01" }` → `{ "minutes": 42.5 }`
+**`POST /predict/fault`**: call on every telemetry tick (or every 5 s)
+```json
+{ "engineTempC": 92.4, "vibration": 0.42, "oilPressurePsi": 50, "rpm": 1600,
+  "humidity": 61, "engineHours": 5000, "obstacleCm": 145 }
+```
+Required: **engineTempC, vibration**.
+→ `{ "fault": "normal", "prob": 0.93, "probabilities": { "normal": 0.93, "overheating": 0.04, ... } }`
+Fault classes: normal | overheating | bearing_wear | low_oil_pressure | sensor_fault.
 
-`POST /predict/anomaly` `{ "idleSec": 900, "engineTempC": 92.4, "vibration": 0.42, "slopeDeg": 7.3 }` → `{ "anomaly": true, "reason": "excessive_idling", "score": -0.21 }`
+**`POST /predict/task-time`**: call when loading today's tasks
+```json
+{ "taskType": "trenching", "machineId": "EXC-001", "operatorId": "OP-01", "volumeM3": 200,
+  "soilType": "clay", "slopeDeg": 5, "tempC": 32, "weather": "clear", "timeOfDay": "morning" }
+```
+Required: **taskType** (trenching | digging | loading | backfilling | hauling | grading). `soilType`: sand | gravel | clay | rock. `weather`: clear | dust | fog | rain. `timeOfDay` defaults to the current time. `tempC` is the ambient air temp, not the engine temp. Operator experience is looked up from `operatorId` (OP-01..OP-10), or pass `operatorExperienceYrs`.
+→ `{ "minutes": 42.5, "low": 36.1, "high": 49.0, "operatorExperienceYrs": 6.8 }` (low/high = 10th-90th percentile)
+
+**`POST /predict/anomaly`**: gateway aggregates each machine over a 15-minute window, then calls once per window
+```json
+{ "idleMin": 11, "fuelUsedL": 2.1, "loadCycles": 3, "avgRpm": 850, "maxTiltDeg": 8,
+  "harshEvents": 0, "overspeedEvents": 0, "seatbeltOffSec": 0, "proximityAlerts": 0 }
+```
+Required: **idleMin** (0-15).
+→ `{ "anomaly": true, "reason": "excessive_idling", "reasons": ["excessive_idling"], "score": -0.08 }`
+Reasons: normal | excessive_idling | unsafe_operation | fuel_waste | unusual_pattern.
+
+`GET /health` → `{ "ok": true, "models": [...] }` · `GET /models` → metrics per model
 
 ## 4. WebSocket: gateway → dashboard (socket.io)
 
