@@ -36,7 +36,16 @@ must be worn whenever the engine runs, keep people outside 1 metre of the machin
 - Be encouraging and practical, like an experienced site supervisor who respects the operator."""
 
 
+def _has_credentials() -> bool:
+    if os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN") or os.getenv("ANTHROPIC_PROFILE"):
+        return True
+    return os.path.isdir(os.path.expanduser("~/.config/anthropic"))   # `ant auth login` profile
+
+
 def _client():
+    if not _has_credentials():
+        log.info("No Anthropic credentials: co-pilot runs in offline mode")
+        return None
     try:
         import anthropic
         return anthropic.AsyncAnthropic(timeout=25.0, max_retries=1)
@@ -79,6 +88,8 @@ def build_context(machine_id: str) -> Dict:
                         "status": x["status"], "predictedMinutes": x["predicted_minutes"],
                         "range": [x["predicted_low"], x["predicted_high"]],
                         "mainFactors": (x.get("factors") or [])[:3], "pace": x.get("pace")} for x in tasks],
+        "position": {**(ms.pos or {}), "zone": ms.zone},
+        "nearbyMachines": engine.nearby(ms, 150),
         "shiftSoFar": {k: shift[k] for k in ("durationMin", "idlePct", "fuelL", "loadCycles",
                                              "seatbeltCompliancePct", "overspeedMin", "alertCount")},
         "safetyScore": insights.safety_score(op["id"]) if op.get("id") else None,
@@ -131,7 +142,17 @@ def _user_turn(context: Dict, text: str, lang: str) -> Dict:
 
 # ---------- public API ----------
 
+SOS_WORDS = ("sos", "emergency", "mayday", "help me", "call help", "i am hurt", "i'm hurt", "bachao", "madad")
+
+
 async def chat(machine_id: str, message: str, history: List[Dict], lang: str = "en") -> Dict:
+    if any(w in message.lower() for w in SOS_WORDS):
+        ms = engine.state(machine_id)
+        sos = await engine.trigger_sos(ms, f"Operator called for help by voice: \"{message}\"")
+        n = len(sos["nearby"]) if sos else 0
+        return {"reply": f"SOS sent to the supervisor and {n} nearby machine{'s' if n != 1 else ''}. "
+                         "Stay in the cab with your seatbelt on unless there is fire. Help is coming.",
+                "source": "sos", "sos": sos}
     ctx = build_context(machine_id)
     msgs = [{"role": h["role"], "content": h["content"]} for h in history[-8:]
             if h.get("role") in ("user", "assistant") and h.get("content")]
@@ -180,6 +201,11 @@ def _alerts_text(ctx: Dict) -> Optional[str]:
         "overheat": "Reduce load and let the engine idle down to cool.",
         "overheat_predicted": "Ease off the load now so the engine does not overheat.",
         "unsafe_tilt": "Stop and move to flatter ground. Keep the bucket low.",
+        "geofence": "Stop and move out of the marked zone.",
+        "machine_proximity": "Another machine is close. Stop and radio them before moving.",
+        "no_inspection": "Complete the pre-start inspection on the screen.",
+        "sos": "Help has been called. Stay in the cab with your seatbelt on unless there is fire.",
+        "sos_nearby": "A nearby machine needs help. Make your machine safe, then respond on the screen.",
         "engine_fault": "Finish the current cycle safely and report the fault to maintenance.",
         "overspeed": "Slow down to the advised speed for this terrain.",
         "idling": "If you are waiting, shut the engine down to save fuel.",
@@ -188,7 +214,10 @@ def _alerts_text(ctx: Dict) -> Optional[str]:
     }.get(a["type"], "Check the alert on screen.")
     n = len(alerts) - 1
     more = f" There {'is' if n == 1 else 'are'} {n} other active alert{'s' if n > 1 else ''}." if n else ""
-    return f"{a['message']}. {action}{more}"
+    msg = a["message"].rstrip(". ")
+    if a["type"] == "overheat_predicted" and ctx["mlPredictions"].get("overheatEtaSec"):
+        msg = f"Engine will reach 110 degrees in about {ctx['mlPredictions']['overheatEtaSec'] / 60:.1f} minutes"
+    return f"{msg}. {action}{more}"
 
 
 def offline_answer(ctx: Dict, message: str) -> str:

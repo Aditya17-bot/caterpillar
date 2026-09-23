@@ -12,6 +12,10 @@ const SCENARIOS = [
   ["bearing_wear", "Bearing wear (vibration)"],
   ["low_oil", "Low oil pressure"],
   ["harsh", "Harsh operation"],
+  ["enter_zone", "Drive into pedestrian zone"],
+  ["approach_machine", "Drive towards nearest machine"],
+  ["breakdown", "Breakdown (auto SOS)"],
+  ["rollover", "Rollover risk (auto SOS)"],
 ];
 
 export default function Simulator({ machineId, machine }) {

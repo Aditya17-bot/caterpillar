@@ -39,7 +39,9 @@ export function useLive() {
   const [feed, setFeed] = useState([]);
   const [insights, setInsights] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [sos, setSos] = useState({}); // id -> SOS record
   const history = useRef({});
+  const trails = useRef({}); // machineId -> last positions for the map
 
   useEffect(() => {
     let ws;
@@ -71,6 +73,19 @@ export function useLive() {
             obstacle: t.obstacleCm,
           });
           if (h.length > HISTORY) h.shift();
+          if (data.pos) {
+            const tr = (trails.current[data.machineId] ||= []);
+            const last = tr[tr.length - 1];
+            if (!last || Math.hypot(last.x - data.pos.x, last.y - data.pos.y) > 0.5) tr.push({ x: data.pos.x, y: data.pos.y });
+            if (tr.length > 120) tr.shift();
+          }
+        }
+        if (event === "sos" || event === "sos_update") {
+          setSos((prev) => {
+            const next = { ...prev, [data.id]: data };
+            if (data.status !== "active") delete next[data.id];
+            return next;
+          });
         }
         if (event === "alert") {
           setFeed((f) => [data, ...f].slice(0, 100));
@@ -81,6 +96,9 @@ export function useLive() {
       };
     }
     connect();
+    get("/api/sos")
+      .then((list) => setSos(Object.fromEntries(list.map((x) => [x.id, x]))))
+      .catch(() => {});
     return () => {
       stopped = true;
       clearTimeout(retry);
@@ -88,7 +106,7 @@ export function useLive() {
     };
   }, []);
 
-  return { machines, feed, insights, connected, history: history.current };
+  return { machines, feed, insights, connected, sos, history: history.current, trails: trails.current };
 }
 
 export const fmtTime = (ts) => new Date(ts * 1000).toLocaleString();

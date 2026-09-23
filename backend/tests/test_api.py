@@ -4,6 +4,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import os  # noqa: E402
+
+os.environ.setdefault("BLACKBOX_AFTER_SEC", "0.2")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import db  # noqa: E402
 from main import app  # noqa: E402
@@ -173,3 +176,84 @@ def test_impact_and_leaderboard(client):
     client.post("/api/training/sim-result", json={"operatorId": "OP-02", "score": 80})
     board = client.get("/api/leaderboard").json()
     assert next(o for o in board if o["id"] == "OP-02")["simBest"] == 80
+
+
+def test_site_grid_and_zones(client):
+    site = client.get("/api/site").json()
+    assert site["nx"] * site["ny"] == sum(len(r) for r in site["heights"])
+    assert {z["id"] for z in site["zones"]} >= {"office", "pit-edge"}
+
+
+def test_geofence_and_machine_proximity(client):
+    client.post("/api/telemetry", json=telemetry(machineId="LDR-001", rfid="C3D4E5F6", posX=40, posY=30))
+    active = client.get("/api/alerts/active").json()
+    assert any(a["type"] == "geofence" and a["machineId"] == "LDR-001" and a["severity"] == "critical" for a in active)
+    client.post("/api/telemetry", json=telemetry(machineId="LDR-002", rfid="D4E5F6A7", posX=45, posY=36))
+    assert any(a["type"] == "machine_proximity" and a["machineId"] == "LDR-002"
+               for a in client.get("/api/alerts/active").json())
+
+
+def test_sos_reaches_nearby_and_resolves(client):
+    client.post("/api/telemetry", json=telemetry(machineId="LDR-001", rfid="C3D4E5F6", posX=150, posY=150))
+    client.post("/api/telemetry", json=telemetry(machineId="LDR-002", rfid="D4E5F6A7", posX=250, posY=150))
+    sos = client.post("/api/sos", json={"machineId": "LDR-001", "reason": "test"}).json()
+    near = {n["machineId"]: n for n in sos["nearby"]}
+    assert near["LDR-002"]["distanceM"] == 100 and near["LDR-002"]["direction"] == "west"
+    assert any(a["type"] == "sos_nearby" and a["machineId"] == "LDR-002" for a in client.get("/api/alerts/active").json())
+    r = client.post(f"/api/sos/{sos['id']}/respond", json={"machineId": "LDR-002"}).json()
+    assert r["responders"][0]["machineId"] == "LDR-002"
+    client.post(f"/api/sos/{sos['id']}/resolve")
+    assert client.get("/api/sos").json() == []
+
+
+def test_rollover_triggers_auto_sos(client):
+    client.post("/api/telemetry", json=telemetry(machineId="DOZ-001", rfid="E5F6A7B8", posX=300, posY=200, slopeDeg=38))
+    sos = client.get("/api/sos").json()
+    assert sos and sos[0]["machine_id"] == "DOZ-001" and sos[0]["auto"] == 1
+    client.post(f"/api/sos/{sos[0]['id']}/resolve")
+
+
+def test_voice_sos_from_copilot(client):
+    r = client.post("/api/copilot/chat", json={"machineId": "EXC-001", "message": "SOS I am stuck"}).json()
+    assert r["source"] == "sos" and r["sos"]["reason"].startswith("Operator called for help")
+    client.post(f"/api/sos/{r['sos']['id']}/resolve")
+
+
+def test_inspection_lockout_and_maintenance(client):
+    items = client.get("/api/inspection/items").json()
+    answers = [{"id": i["id"], "ok": i["id"] != "hydraulics", "note": "leak at boom cylinder"} for i in items]
+    r = client.post("/api/inspection", json={"machineId": "EXC-002", "items": answers}).json()
+    assert r["lockout"] and r["inspection"]["status"] == "locked"
+    reqs = client.get("/api/maintenance?machineId=EXC-002").json()
+    assert reqs[0]["priority"] == "urgent" and "hydraulic" in reqs[0]["issue"].lower()
+    res = client.post("/api/telemetry", json=telemetry(machineId="EXC-002", rfid="B2C3D4E5")).json()
+    assert {"command": "set", "field": "engineOn", "value": False} in res["commands"]
+    client.post("/api/inspection/EXC-002/clear-lockout")
+    upd = client.patch(f"/api/maintenance/{reqs[0]['id']}", json={"status": "scheduled", "slot": "2026-09-24T09:00"}).json()
+    assert upd["status"] == "scheduled"
+    booked = client.post("/api/maintenance", json={"machineId": "EXC-002", "issue": "Strange noise"}).json()
+    assert booked["source"] == "operator"
+
+
+def test_incident_black_box(client):
+    import time as _t
+    for _ in range(3):
+        client.post("/api/telemetry", json=telemetry(machineId="EXC-001", obstacleCm=300))
+    client.post("/api/telemetry", json=telemetry(machineId="EXC-001", obstacleCm=30))
+    _t.sleep(0.5)
+    client.post("/api/telemetry", json=telemetry(machineId="EXC-001", obstacleCm=300))
+    inc = client.get("/api/incidents?machineId=EXC-001&type=proximity").json()[0]
+    assert inc["hasBlackbox"]
+    full = client.get(f"/api/incidents/{inc['id']}").json()
+    assert len(full["blackbox"]["readings"]) >= 4
+    assert any(e["type"] == "proximity" for e in full["blackbox"]["events"])
+
+
+def test_safety_score_ignores_machine_faults(client):
+    before = client.get("/api/operators/OP-03/score").json()["score"]
+    import engine
+    ms = engine.state("LDR-001")
+    client.post("/api/telemetry", json=telemetry(machineId="LDR-001", rfid="C3D4E5F6", posX=150, posY=150,
+                                                 engineTempC=118))
+    assert "overheat" in ms.alerts
+    assert client.get("/api/operators/OP-03/score").json()["score"] == before

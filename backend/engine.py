@@ -6,17 +6,19 @@ accumulators for the rolling usage window that feeds the anomaly model.
 
 import asyncio
 import json
+import math
 import os
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from fastapi import WebSocket
 from starlette.concurrency import run_in_threadpool
 
 import db
 import ml
+import site_map
 
 # Demo-friendly timings; real-world values in comments.
 WINDOW_SEC = float(os.getenv("WINDOW_SEC", 60))          # usage window (real: 900 = 15 min)
@@ -30,6 +32,13 @@ SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 OVERHEAT_C = 110
 OVERHEAT_WARN_ETA_SEC = 180       # warn when the temperature trend reaches OVERHEAT_C within this
 BUCKET_M3 = {"excavator": 1.5, "loader": 3.0, "dozer": 4.0}   # material moved per load cycle
+PREDICTED_CLEAR_SEC = 15          # keep the overheat forecast alert this long after the trend eases
+BLACKBOX_BEFORE_SEC = 60
+BLACKBOX_AFTER_SEC = float(os.getenv("BLACKBOX_AFTER_SEC", 30))
+MACHINE_WARN_M, MACHINE_CRIT_M = 20.0, 10.0   # machine-to-machine distance alerts
+SOS_RADIUS_M = 300.0              # machines within this distance are asked to respond
+ROLLOVER_DEG = 35.0
+INSPECTION_GRACE_SEC = 30         # engine running this long without a pre-start inspection -> alert
 
 
 # ---------- WebSocket hub ----------
@@ -181,6 +190,13 @@ class MachineState:
     commands: List[Dict] = field(default_factory=list)       # queued for the simulator
     shift: Shift = field(default_factory=Shift)
     task_cycles: int = 0                                      # load cycles since current task started
+    predicted_soon_at: float = 0.0                            # last time the overheat forecast fired
+    events: Deque[Dict] = field(default_factory=lambda: deque(maxlen=300))   # alert timeline (black box)
+    pos: Optional[Dict] = None                                # {x, y, heading, elevation}
+    zone: Optional[str] = None
+    inspection: Dict = field(default_factory=lambda: {"status": "done", "auto": True})
+    engine_on_since: Optional[float] = None
+    sos_id: Optional[int] = None
 
 
 machines: Dict[str, MachineState] = {}
@@ -202,6 +218,10 @@ def summary(ms: MachineState) -> Dict:
         "telemetry": ms.last,
         "predictions": ms.predictions,
         "activeAlerts": list(ms.alerts.values()),
+        "pos": ms.pos,
+        "zone": ms.zone,
+        "inspection": ms.inspection,
+        "sosId": ms.sos_id,
     }
 
 
@@ -216,18 +236,43 @@ async def raise_alert(ms: MachineState, kind: str, severity: str, message: str) 
         "operatorId": (ms.operator or {}).get("id"),
         "type": kind, "severity": severity, "message": message, "ts": time.time(),
     }
+    ms.events.append({"ts": alert["ts"], "type": kind, "severity": severity, "message": message,
+                      "event": "raised"})
     if severity != "info":
         snapshot = {k: v for k, v in ms.last.items() if k not in ("accel", "gyro")}
         alert["id"] = await run_in_threadpool(db.insert, "incidents", {
             "ts": alert["ts"], "machine_id": ms.machine_id, "operator_id": alert["operatorId"],
             "type": kind, "severity": severity, "message": message, "snapshot": snapshot,
+            "blackbox": blackbox(ms, alert["ts"]),
         })
+        asyncio.create_task(complete_blackbox(ms, alert["id"], alert["ts"]))
     ms.alerts[kind] = alert
     ms.shift.alerts[kind] = ms.shift.alerts.get(kind, 0) + 1
     await hub.send("alert", alert)
 
 
+def blackbox(ms: MachineState, ts: float) -> Dict:
+    """Readings and alert timeline around an incident, like a flight recorder."""
+    lo, hi = ts - BLACKBOX_BEFORE_SEC, ts + BLACKBOX_AFTER_SEC
+    return {
+        "incidentTs": ts,
+        "readings": [h for h in ms.history if lo <= h["ts"] <= hi],
+        "events": [e for e in ms.events if lo <= e["ts"] <= hi],
+        "complete": time.time() >= hi,
+    }
+
+
+async def complete_blackbox(ms: MachineState, incident_id: int, ts: float) -> None:
+    """Re-save the recording once the seconds after the incident have been captured."""
+    await asyncio.sleep(BLACKBOX_AFTER_SEC)
+    await run_in_threadpool(db.execute, "UPDATE incidents SET blackbox = ? WHERE id = ?",
+                            [json.dumps(blackbox(ms, ts), default=str), incident_id])
+
+
 async def clear_alert(ms: MachineState, kind: str) -> None:
+    if kind in ms.alerts:
+        ms.events.append({"ts": time.time(), "type": kind, "severity": ms.alerts[kind]["severity"],
+                          "message": "cleared", "event": "cleared"})
     if ms.alerts.pop(kind, None):
         ms.camera_expiry.pop(kind, None)
         await hub.send("alert_cleared", {"machineId": ms.machine_id, "type": kind})
@@ -293,6 +338,117 @@ async def run_rules(ms: MachineState, t: Dict, now: float) -> None:
         await level(ms, "idling", None)
 
 
+async def run_site_rules(ms: MachineState, t: Dict, now: float) -> None:
+    """Position-based rules: danger zones, machines too close, rollover/breakdown SOS, inspection."""
+    if ms.pos:
+        z = site_map.zone_at(ms.pos["x"], ms.pos["y"])
+        ms.zone = z["id"] if z else None
+        await level(ms, "geofence", ("critical" if z["kind"] == "no_go" else "warning") if z else None,
+                    f"{z['name']}: {z['message']}" if z else "")
+
+        nearest, dist = None, 1e9
+        for other in machines.values():
+            if other is ms or not other.online or not other.pos:
+                continue
+            d = math.hypot(other.pos["x"] - ms.pos["x"], other.pos["y"] - ms.pos["y"])
+            if d < dist:
+                nearest, dist = other, d
+        sev = "critical" if dist < MACHINE_CRIT_M else "warning" if dist < MACHINE_WARN_M else None
+        await level(ms, "machine_proximity", sev,
+                    f"{nearest.machine_id if nearest else ''} is {dist:.0f} m away. Keep clear, radio before moving.")
+
+    engine_on = t.get("engineOn", False)
+    was_on = ms.last.get("engineOn", False)
+    if abs(t.get("slopeDeg", 0)) >= ROLLOVER_DEG and not ms.sos_id:
+        await trigger_sos(ms, f"Possible rollover: machine tilted {abs(t['slopeDeg']):.0f}°", auto=True)
+    elif was_on and not engine_on and not ms.sos_id:
+        faults = [a for a in ms.alerts.values()
+                  if a["type"] in ("engine_fault", "overheat") and a["severity"] == "critical"]
+        if faults or t.get("oilPressurePsi", 50) < 10:
+            reason = faults[0]["message"] if faults else "oil pressure lost"
+            await trigger_sos(ms, f"Machine breakdown: engine stopped ({reason})", auto=True)
+
+    ms.engine_on_since = (ms.engine_on_since or now) if engine_on else None
+    pending = ms.inspection.get("status") == "pending"
+    running = ms.engine_on_since is not None and now - ms.engine_on_since > INSPECTION_GRACE_SEC
+    await level(ms, "no_inspection", "warning" if pending and running else None,
+                "Engine running without today's pre-start inspection")
+
+
+# ---------- SOS ----------
+
+def nearby(ms: MachineState, radius: float = SOS_RADIUS_M) -> List[Dict]:
+    out = []
+    if not ms.pos:
+        return out
+    for other in machines.values():
+        if other is ms or not other.online or not other.pos:
+            continue
+        dx, dy = other.pos["x"] - ms.pos["x"], other.pos["y"] - ms.pos["y"]
+        d = math.hypot(dx, dy)
+        if d <= radius:
+            out.append({"machineId": other.machine_id, "machineType": other.machine_type,
+                        "operator": (other.operator or {}).get("name"), "distanceM": round(d),
+                        "direction": site_map.bearing(-dx, -dy)})   # direction from responder to the SOS
+    return sorted(out, key=lambda n: n["distanceM"])
+
+
+def get_sos(sos_id: int) -> Optional[Dict]:
+    r = db.one("SELECT * FROM sos_events WHERE id = ?", [sos_id])
+    if r:
+        r["nearby"] = json.loads(r["nearby"] or "[]")
+        r["responders"] = json.loads(r["responders"] or "[]")
+    return r
+
+
+async def trigger_sos(ms: MachineState, reason: str, auto: bool = False) -> Dict:
+    if ms.sos_id:
+        return await run_in_threadpool(get_sos, ms.sos_id)
+    near = nearby(ms)
+    rec = {"ts": time.time(), "machine_id": ms.machine_id, "operator_id": (ms.operator or {}).get("id"),
+           "reason": reason, "auto": int(auto), "x": (ms.pos or {}).get("x"), "y": (ms.pos or {}).get("y"),
+           "status": "active", "nearby": near, "responders": []}
+    ms.sos_id = await run_in_threadpool(db.insert, "sos_events", rec)
+    await raise_alert(ms, "sos", "critical", f"SOS sent: {reason}")
+    who = (ms.operator or {}).get("name", "operator")
+    for n in near:
+        await raise_alert(state(n["machineId"]), "sos_nearby", "critical",
+                          f"SOS from {ms.machine_id} ({who}) {n['distanceM']} m to the {n['direction']}: {reason}")
+    sos = await run_in_threadpool(get_sos, ms.sos_id)
+    await hub.send("sos", sos)
+    return sos
+
+
+async def respond_sos(sos_id: int, machine_id: str) -> Optional[Dict]:
+    sos = await run_in_threadpool(get_sos, sos_id)
+    if not sos or sos["status"] != "active":
+        return sos
+    if machine_id not in [r["machineId"] for r in sos["responders"]]:
+        ms = state(machine_id)
+        sos["responders"].append({"machineId": machine_id, "operator": (ms.operator or {}).get("name"),
+                                  "ts": time.time()})
+        await run_in_threadpool(db.execute, "UPDATE sos_events SET responders = ? WHERE id = ?",
+                                [json.dumps(sos["responders"]), sos_id])
+        await clear_alert(ms, "sos_nearby")
+    await hub.send("sos_update", sos)
+    return sos
+
+
+async def resolve_sos(sos_id: int) -> Optional[Dict]:
+    sos = await run_in_threadpool(get_sos, sos_id)
+    if not sos:
+        return None
+    await run_in_threadpool(db.execute, "UPDATE sos_events SET status = 'resolved' WHERE id = ?", [sos_id])
+    sos["status"] = "resolved"
+    origin = state(sos["machine_id"])
+    origin.sos_id = None
+    await clear_alert(origin, "sos")
+    for n in sos["nearby"]:
+        await clear_alert(state(n["machineId"]), "sos_nearby")
+    await hub.send("sos_update", sos)
+    return sos
+
+
 # ---------- usage window -> anomaly model ----------
 
 def accumulate(ms: MachineState, t: Dict, dt: float) -> None:
@@ -348,31 +504,67 @@ async def close_window(ms: MachineState, now: float) -> None:
 
 # ---------- forecasting ----------
 
-def overheat_eta(ms: MachineState) -> Optional[float]:
-    """Seconds until engine temp reaches OVERHEAT_C, from a linear fit of the last ~30 s."""
-    pts = [(h["ts"], h["engineTempC"]) for h in list(ms.history)[-30:] if h.get("engineTempC") is not None]
-    if len(pts) < 10:
-        return None
-    t0 = pts[0][0]
-    xs = [p[0] - t0 for p in pts]
-    ys = [p[1] for p in pts]
+def _linfit(xs: List[float], ys: List[float]) -> Optional[Tuple[float, float]]:
+    """Least-squares line y = a + b*x."""
     mx, my = sum(xs) / len(xs), sum(ys) / len(ys)
     var = sum((x - mx) ** 2 for x in xs)
     if var == 0:
         return None
-    slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var   # degrees per second
-    current = ys[-1]
-    if slope < 0.05 or current >= OVERHEAT_C:
+    b = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / var
+    return my - b * mx, b
+
+
+def overheat_eta(ms: MachineState) -> Optional[float]:
+    """Seconds until engine temp reaches OVERHEAT_C, or None if it won't.
+
+    Engine temperature behaves like a first-order system: it rises quickly, then levels off at
+    an equilibrium set by load and cooling (dT/dt = k * (T_eq - T)). Over the last ~40 s we
+    regress the rate of change against temperature to estimate k and T_eq:
+      - levelling off below 110 °C (normal warm-up)  -> no warning
+      - levelling off above 110 °C                   -> time to 110 on the exponential curve
+      - not levelling off (cooling failing, runaway)  -> straight-line extrapolation
+    """
+    pts = [(h["ts"], h["engineTempC"]) for h in list(ms.history)[-40:] if h.get("engineTempC") is not None]
+    if len(pts) < 15:
         return None
-    return (OVERHEAT_C - current) / slope
+    t0 = pts[0][0]
+    ts = [p[0] - t0 for p in pts]
+    temps = [p[1] for p in pts]
+    # smooth, then rate of change over 5-sample spans
+    sm = [sum(temps[max(0, i - 2):i + 3]) / len(temps[max(0, i - 2):i + 3]) for i in range(len(temps))]
+    rates, levels = [], []
+    for i in range(len(sm) - 5):
+        dt = ts[i + 5] - ts[i]
+        if dt > 0:
+            rates.append((sm[i + 5] - sm[i]) / dt)
+            levels.append((sm[i + 5] + sm[i]) / 2)
+    current = sm[-1]
+    recent = _linfit(ts[-15:], temps[-15:])
+    if not rates or not recent or current >= OVERHEAT_C:
+        return None
+    rate_now = recent[1]
+    if rate_now < 0.05:                       # rising slower than 3 °C/min: nothing to forecast
+        return None
+    fit = _linfit(levels, rates)              # rate = a + b*T  ->  k = -b, T_eq = -a/b
+    if fit and fit[1] < -0.01:
+        a, b = fit
+        k, t_eq = -b, -a / b
+        if t_eq <= OVERHEAT_C + 1:
+            return None                       # settles below the limit
+        return math.log((t_eq - current) / (t_eq - OVERHEAT_C)) / k
+    return (OVERHEAT_C - current) / rate_now
 
 
 async def run_forecasts(ms: MachineState, t: Dict) -> None:
     eta = overheat_eta(ms)
     ms.predictions["overheatEtaSec"] = round(eta) if eta is not None else None
-    soon = eta is not None and eta <= OVERHEAT_WARN_ETA_SEC and t.get("engineTempC", 0) > 90
-    await level(ms, "overheat_predicted", "warning" if soon else None,
-                f"Engine predicted to reach {OVERHEAT_C} °C in ~{(eta or 0) / 60:.1f} min. Reduce load now.")
+    now = time.time()
+    if eta is not None and eta <= OVERHEAT_WARN_ETA_SEC and t.get("engineTempC", 0) > 90:
+        ms.predicted_soon_at = now
+        await raise_alert(ms, "overheat_predicted", "warning",
+                          f"Engine predicted to reach {OVERHEAT_C} °C in about {eta / 60:.1f} min. Reduce load now")
+    elif now - ms.predicted_soon_at > PREDICTED_CLEAR_SEC or t.get("engineTempC", 0) >= OVERHEAT_C:
+        await clear_alert(ms, "overheat_predicted")   # hysteresis: the noisy trend must stay calm first
 
 
 def start_shift(ms: MachineState, operator_id: Optional[str]) -> None:
@@ -394,6 +586,7 @@ async def ingest(t: Dict) -> Dict:
             op["certified"] = json.loads(op["certified"] or "[]")
             ms.operator = op
             start_shift(ms, op["id"])
+            ms.inspection = {"status": "pending", "operatorId": op["id"]}
             await hub.send("login", {"machineId": ms.machine_id, "operator": op})
     elif not rfid and ms.operator:
         ms.operator = None
@@ -418,17 +611,23 @@ async def ingest(t: Dict) -> Dict:
         ms.predictions["fault"] = fault.fault
         ms.predictions["faultProb"] = fault.prob
 
+    if t.get("posX") is not None:
+        ms.pos = {"x": t["posX"], "y": t["posY"], "heading": t.get("heading", 0),
+                  "elevation": t.get("elevation")}
+    ms.history.append({
+        "ts": now, "engineTempC": t.get("engineTempC"), "slopeDeg": t.get("slopeDeg"),
+        "speedKmh": t.get("speedKmh"), "optimalSpeedKmh": speed.speed_kmh,
+        "obstacleCm": t.get("obstacleCm"), "rpm": t.get("rpm"), "seatbelt": t.get("seatbelt"),
+        "engineOn": t.get("engineOn"), "vibration": t.get("vibration"),
+        "oilPressurePsi": t.get("oilPressurePsi"), "posX": t.get("posX"), "posY": t.get("posY"),
+    })
     accumulate(ms, t, dt)
     await run_rules(ms, t, now)
+    await run_site_rules(ms, t, now)
     ms.shift.add(t, dt, "overspeed" in ms.alerts)
     ms.task_cycles += bool(t.get("loadCycle"))
 
     ms.last, ms.last_seen, ms.online = t, now, True
-    ms.history.append({
-        "ts": now, "engineTempC": t.get("engineTempC"), "slopeDeg": t.get("slopeDeg"),
-        "speedKmh": t.get("speedKmh"), "optimalSpeedKmh": speed.speed_kmh,
-        "obstacleCm": t.get("obstacleCm"), "rpm": t.get("rpm"),
-    })
     await run_forecasts(ms, t)
     await hub.send("telemetry", summary(ms))
 

@@ -42,6 +42,20 @@ CREATE TABLE IF NOT EXISTS shift_reports (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     machine_id TEXT, operator_id TEXT, start REAL, end REAL, stats TEXT, summary TEXT, source TEXT
 );
+CREATE TABLE IF NOT EXISTS inspections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL, machine_id TEXT, operator_id TEXT, items TEXT, passed INTEGER, defects INTEGER, photo TEXT
+);
+CREATE TABLE IF NOT EXISTS maintenance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL, machine_id TEXT, operator_id TEXT, issue TEXT, priority TEXT, slot TEXT, notes TEXT,
+    source TEXT, status TEXT DEFAULT 'requested'
+);
+CREATE TABLE IF NOT EXISTS sos_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL, machine_id TEXT, operator_id TEXT, reason TEXT, auto INTEGER, x REAL, y REAL,
+    status TEXT, nearby TEXT, responders TEXT
+);
 CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     operator_id TEXT, instructor TEXT, slot TEXT, topic TEXT, ts REAL
@@ -62,7 +76,7 @@ def conn() -> sqlite3.Connection:
 
 
 # columns added after the first release: (table, column, type)
-MIGRATIONS = [("tasks", "factors", "TEXT")]
+MIGRATIONS = [("tasks", "factors", "TEXT"), ("incidents", "blackbox", "TEXT")]
 
 
 def init() -> None:

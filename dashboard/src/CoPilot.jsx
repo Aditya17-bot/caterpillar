@@ -24,6 +24,11 @@ const SPOKEN_ALERT = {
   idling: "Engine idling. Consider shutting down.",
   drowsy: "Wake up. Stop the machine and take a break.",
   anomaly: "Unusual operating pattern detected.",
+  geofence: null, // message itself names the zone
+  machine_proximity: "Another machine is very close. Stop and radio.",
+  lockout: "Machine locked out. Critical defect found.",
+  sos: "SOS sent. Help is on the way.",
+  sos_nearby: null, // message has distance and direction
 };
 
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -65,7 +70,7 @@ export default function CoPilot({ machineId, feed }) {
     lastAlert.current = a;
     if (alertsOut && a.machineId === machineId && (a.severity === "critical" || a.type === "overheat_predicted")) {
       speechSynthesis.cancel();
-      speak(SPOKEN_ALERT[a.type] || a.message, "en-IN");
+      speak(SPOKEN_ALERT[a.type] || a.message.replace(/°/g, " degrees"), "en-IN");
     }
   }, [feed, alertsOut, machineId]);
 

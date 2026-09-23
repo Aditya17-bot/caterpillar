@@ -16,7 +16,7 @@ import argparse
 import math
 import random
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import httpx
 
@@ -43,7 +43,70 @@ SCENARIOS = {
     "low_oil": 30,
     "fuel_waste": 75,
     "harsh": 10,
+    "enter_zone": 40,        # drive into the pedestrian area
+    "approach_machine": 40,  # drive towards the nearest machine
+    "rollover": 20,          # tilt past 35 degrees -> automatic SOS
+    "breakdown": 3600,       # oil pressure lost, engine stalls -> automatic SOS (until "normal")
 }
+
+
+class Site:
+    """Terrain grid + zones downloaded from the backend (GET /api/site)."""
+
+    def __init__(self, data: Optional[Dict] = None) -> None:
+        self.data = data
+        self.zones = (data or {}).get("zones", [])
+        self.width = (data or {}).get("width", 400.0)
+        self.height = (data or {}).get("height", 300.0)
+
+    def elevation(self, x: float, y: float) -> float:
+        d = self.data
+        if not d:
+            return 100.0
+        step, nx, ny, h = d["step"], d["nx"], d["ny"], d["heights"]
+        fx = min(max(x / step, 0), nx - 1.001)
+        fy = min(max(y / step, 0), ny - 1.001)
+        i, j = int(fx), int(fy)
+        tx, ty = fx - i, fy - j
+        top = h[j][i] * (1 - tx) + h[j][i + 1] * tx
+        bottom = h[j + 1][i] * (1 - tx) + h[j + 1][i + 1] * tx
+        return top * (1 - ty) + bottom * ty
+
+    def slope_along(self, x: float, y: float, heading: float, d: float = 3.0) -> float:
+        """Terrain slope in degrees in the direction of travel (+ = uphill)."""
+        hx, hy = math.sin(math.radians(heading)), math.cos(math.radians(heading))
+        rise = self.elevation(x + hx * d, y + hy * d) - self.elevation(x - hx * d, y - hy * d)
+        return math.degrees(math.atan2(rise, 2 * d))
+
+    def in_zone(self, x: float, y: float) -> bool:
+        return any(point_in_polygon(x, y, z["polygon"]) for z in self.zones)
+
+    def zone_center(self, zone_id: str) -> Optional[Tuple[float, float]]:
+        for z in self.zones:
+            if z["id"] == zone_id:
+                xs, ys = zip(*z["polygon"])
+                return sum(xs) / len(xs), sum(ys) / len(ys)
+        return None
+
+
+def point_in_polygon(x: float, y: float, poly) -> bool:
+    inside, j = False, len(poly) - 1
+    for i in range(len(poly)):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        if (yi > y) != (yj > y) and x < (xj - xi) * (y - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def heading_to(x: float, y: float, tx: float, ty: float) -> float:
+    return (math.degrees(math.atan2(tx - x, ty - y)) + 360) % 360
+
+
+def turn_towards(cur: float, target: float, max_step: float) -> float:
+    diff = (target - cur + 540) % 360 - 180
+    return (cur + max(-max_step, min(max_step, diff))) % 360
 
 
 def approach(cur: float, target: float, rate: float) -> float:
@@ -52,7 +115,7 @@ def approach(cur: float, target: float, rate: float) -> float:
 
 
 class Machine:
-    def __init__(self, machine_id: str, rng: random.Random) -> None:
+    def __init__(self, machine_id: str, rng: random.Random, site: Site, start: Optional[List[float]] = None) -> None:
         self.id = machine_id
         self.type, self.rfid = MACHINES[machine_id]
         self.rng = rng
@@ -60,7 +123,9 @@ class Machine:
         self.seatbelt = True
         self.logged_in = True
         self.phase, self.phase_left = "work", rng.uniform(20, 40)
-        self.slope, self.slope_target, self.slope_left = 0.0, rng.uniform(-8, 8), 30.0
+        self.site = site
+        self.x, self.y, self.heading = start or (rng.uniform(80, 320), rng.uniform(80, 220), rng.uniform(0, 360))
+        self.slope = 0.0
         self.surface = rng.choice(["gravel", "gravel", "sand", "mud", "asphalt"])
         self.temp = 80.0
         self.humidity = rng.uniform(40, 70)
@@ -81,6 +146,7 @@ class Machine:
         if name == "normal":
             self.scenarios.clear()
             self.seatbelt, self.engine_on = True, True
+            self.oil = 50.0
         elif name == "set":
             f, v = cmd.get("field"), cmd.get("value")
             if f == "engineOn":
@@ -100,7 +166,39 @@ class Machine:
 
     # ----- physics step -----
 
-    def step(self, dt: float) -> Dict:
+    def move(self, dt: float, phase: str, others: List["Machine"]) -> None:
+        """Drive around the site: wander while travelling, avoid zones/machines unless a scenario says otherwise."""
+        r = self.rng
+        target = None
+        if self.active("enter_zone"):
+            target = self.site.zone_center("office")
+        elif self.active("approach_machine") and others:
+            o = min(others, key=lambda m: math.hypot(m.x - self.x, m.y - self.y))
+            if math.hypot(o.x - self.x, o.y - self.y) > 6:
+                target = (o.x, o.y)
+        if target:
+            self.heading = turn_towards(self.heading, heading_to(self.x, self.y, *target), 25 * dt)
+        elif phase == "travel":
+            self.heading = (self.heading + r.gauss(0, 6) * dt) % 360
+            cx, cy = self.site.width / 2, self.site.height / 2
+            margin = 25
+            if not (margin < self.x < self.site.width - margin and margin < self.y < self.site.height - margin):
+                self.heading = turn_towards(self.heading, heading_to(self.x, self.y, cx, cy), 30 * dt)
+        if phase not in ("travel",) and not target:
+            return
+        step = self.speed / 3.6 * dt
+        nx = self.x + math.sin(math.radians(self.heading)) * step
+        ny = self.y + math.cos(math.radians(self.heading)) * step
+        if not target:
+            blocked = self.site.in_zone(nx, ny) or any(
+                math.hypot(o.x - nx, o.y - ny) < 25 for o in others)
+            if blocked:                       # operator steers away from hazards
+                self.heading = (self.heading + 150 + r.uniform(-30, 30)) % 360
+                return
+        self.x = min(max(nx, 2), self.site.width - 2)
+        self.y = min(max(ny, 2), self.site.height - 2)
+
+    def step(self, dt: float, others: Optional[List["Machine"]] = None) -> Dict:
         r = self.rng
         for k in list(self.scenarios):
             self.scenarios[k] -= dt
@@ -116,19 +214,26 @@ class Machine:
             self.phase_left = {"work": r.uniform(25, 50), "travel": r.uniform(10, 25),
                                "idle": r.uniform(5, 15)}[self.phase]
         phase = "idle" if self.active("long_idle") else self.phase
+        if self.active("enter_zone") or self.active("approach_machine"):
+            phase = "travel"
+        if self.active("breakdown"):
+            self.oil = max(0.0, self.oil - 20 * dt)       # oil pressure collapses...
+            if self.oil < 8 and SCENARIOS["breakdown"] - self.scenarios["breakdown"] > 3:
+                self.engine_on = False                     # ...and the engine stalls
         if not self.engine_on:
             phase = "off"
 
-        # terrain
-        self.slope_left -= dt
-        if self.slope_left <= 0:
-            self.slope_target = r.uniform(-15, 15)
-            self.slope_left = r.uniform(20, 40)
-            if r.random() < 0.2:
-                self.surface = r.choice(["gravel", "sand", "mud", "asphalt"])
-        target = 28.0 if self.active("steep_slope") else self.slope_target
-        self.slope = approach(self.slope, target, 0.15 if self.active("steep_slope") else 0.05)
-        self.slope += r.gauss(0, 0.3)
+        # terrain: slope comes from the site's hills in the direction of travel
+        self.move(dt, phase, others or [])
+        if r.random() < 0.005:
+            self.surface = r.choice(["gravel", "sand", "mud", "asphalt"])
+        target = self.site.slope_along(self.x, self.y, self.heading)
+        rate = 0.4
+        if self.active("steep_slope"):
+            target, rate = 28.0, 0.15
+        if self.active("rollover"):
+            target, rate = 38.0, 0.25
+        self.slope = approach(self.slope, target, rate) + r.gauss(0, 0.3)
 
         # speed: operator drives roughly at a terrain-appropriate speed
         nominal = NOMINAL_SPEED[self.type]
@@ -154,8 +259,9 @@ class Machine:
         else:
             self.temp = approach(self.temp, temp_target, 0.06) + r.gauss(0, 0.2)
 
-        oil_target = 14.0 if self.active("low_oil") else 50.0 if phase != "off" else 0.0
-        self.oil = approach(self.oil, oil_target, 0.2) + r.gauss(0, 0.5)
+        if not self.active("breakdown"):
+            oil_target = 14.0 if self.active("low_oil") else 50.0 if phase != "off" else 0.0
+            self.oil = approach(self.oil, oil_target, 0.2) + r.gauss(0, 0.5)
 
         vib_target = {"work": 0.45, "travel": 0.35, "idle": 0.15, "off": 0.0}[phase]
         if self.active("bearing_wear"):
@@ -216,26 +322,39 @@ class Machine:
             "harshEvent": bool(harsh),
             "phase": phase,
             "scenarios": sorted(self.scenarios),
+            "posX": round(self.x, 1),
+            "posY": round(self.y, 1),
+            "heading": round(self.heading, 1),
+            "elevation": round(self.site.elevation(self.x, self.y), 2),
         }
 
 
 def run(url: str, ids: List[str], chaos: Optional[float], start: List[str], seed: int) -> None:
     rng = random.Random(seed)
-    machines = [Machine(mid, random.Random(rng.random())) for mid in ids]
+    client = httpx.Client(base_url=url, timeout=3)
+    site = Site()
+    for _ in range(30):   # wait for the backend so machines drive on the real terrain
+        try:
+            site = Site(client.get("/api/site").json())
+            break
+        except httpx.HTTPError:
+            print("waiting for backend /api/site ...", flush=True)
+            time.sleep(2)
+    start_pos = (site.data or {}).get("start", {})
+    machines = [Machine(mid, random.Random(rng.random()), site, start_pos.get(mid)) for mid in ids]
     by_id = {m.id: m for m in machines}
     for s in start:
         mid, name = s.split(":")
         by_id[mid].apply({"command": name})
 
     next_chaos = time.time() + (chaos or 0)
-    client = httpx.Client(base_url=url, timeout=3)
     print(f"streaming {', '.join(ids)} to {url}  (Ctrl+C to stop)", flush=True)
     last = time.time()
     while True:
         now = time.time()
         dt, last = now - last, now
         for m in machines:
-            payload = m.step(dt)
+            payload = m.step(dt, [o for o in machines if o is not m])
             try:
                 res = client.post("/api/telemetry", json=payload)
                 res.raise_for_status()

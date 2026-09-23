@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import { fmtTime, get } from "../api.js";
+import BlackBox from "../BlackBox.jsx";
 
-const TYPES = ["", "seatbelt", "proximity", "overheat", "unsafe_tilt", "engine_fault", "overspeed", "idling",
-  "anomaly", "drowsy", "camera_person"];
+const TYPES = ["", "seatbelt", "proximity", "overheat", "overheat_predicted", "unsafe_tilt", "engine_fault", "overspeed",
+  "idling", "anomaly", "drowsy", "camera_person", "geofence", "machine_proximity", "no_inspection", "lockout", "sos",
+  "sos_nearby"];
 
 export default function Incidents({ live, machineId }) {
   const [rows, setRows] = useState([]);
   const [onlyThis, setOnlyThis] = useState(true);
   const [type, setType] = useState("");
   const [severity, setSeverity] = useState("");
+  const [replay, setReplay] = useState(null);
 
   useEffect(() => {
     const q = new URLSearchParams();
@@ -48,6 +51,7 @@ export default function Incidents({ live, machineId }) {
             <th>Type</th>
             <th>Severity</th>
             <th>Message</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -59,10 +63,12 @@ export default function Incidents({ live, machineId }) {
               <td>{r.type}</td>
               <td className={r.severity === "critical" ? "bad" : ""}>{r.severity}</td>
               <td>{r.message}</td>
+              <td>{r.hasBlackbox && <button onClick={() => setReplay(r.id)}>▶ Replay</button>}</td>
             </tr>
           ))}
         </tbody>
       </table>
+      {replay && <BlackBox incidentId={replay} onClose={() => setReplay(null)} />}
     </>
   );
 }

@@ -21,6 +21,8 @@ import copilot
 import db
 import engine
 import insights
+import inspection
+import site_map
 import ml
 import seed
 import training
@@ -181,7 +183,19 @@ def list_incidents(machineId: Optional[str] = None, operatorId: Optional[str] = 
     rows = db.query(sql + " ORDER BY ts DESC LIMIT ?", params + [limit])
     for r in rows:
         r["snapshot"] = json.loads(r["snapshot"] or "{}")
+        r["hasBlackbox"] = bool(r.pop("blackbox", None))
     return rows
+
+
+@app.get("/api/incidents/{incident_id}", tags=["incidents"])
+def get_incident(incident_id: int):
+    """One incident with its black-box recording (readings and alerts ~60 s before, 30 s after)."""
+    r = db.one("SELECT * FROM incidents WHERE id = ?", [incident_id])
+    if not r:
+        raise HTTPException(404, "incident not found")
+    r["snapshot"] = json.loads(r["snapshot"] or "{}")
+    r["blackbox"] = json.loads(r["blackbox"]) if r.get("blackbox") else None
+    return r
 
 
 @app.get("/api/insights/windows", tags=["incidents"])
@@ -333,6 +347,172 @@ class BriefingRequest(BaseModel):
 @app.post("/api/copilot/briefing", tags=["copilot"])
 async def copilot_briefing(body: BriefingRequest):
     return await copilot.briefing(body.machineId, body.lang)
+
+
+# ---------- site map ----------
+
+@app.get("/api/site", tags=["site"])
+def site():
+    """Terrain grid, danger zones and machine start positions."""
+    return {**site_map.grid(), "zones": site_map.ZONES, "start": site_map.START}
+
+
+# ---------- pre-start inspection ----------
+
+@app.get("/api/inspection/items", tags=["inspection"])
+def inspection_items():
+    return inspection.ITEMS
+
+
+class InspectionItem(BaseModel):
+    id: str
+    ok: bool
+    note: str = ""
+
+
+class InspectionSubmit(BaseModel):
+    machineId: str
+    operatorId: Optional[str] = None
+    items: List[InspectionItem]
+    photo: Optional[str] = None     # small JPEG data URL of a defect
+
+
+@app.post("/api/inspection", tags=["inspection"])
+async def submit_inspection(body: InspectionSubmit):
+    """Record the walk-around. Failed items create maintenance requests; failed critical items lock the machine."""
+    result = inspection.evaluate([i.model_dump() for i in body.items])
+    if result["missing"]:
+        raise HTTPException(422, f"unanswered items: {', '.join(result['missing'])}")
+    ms = engine.state(body.machineId)
+    op = body.operatorId or (ms.operator or {}).get("id")
+    iid = db.insert("inspections", {
+        "ts": time.time(), "machine_id": body.machineId, "operator_id": op,
+        "items": [i.model_dump() for i in body.items], "passed": int(result["passed"]),
+        "defects": len(result["failed"]), "photo": body.photo,
+    })
+    for f in result["failed"]:
+        db.insert("maintenance", {
+            "ts": time.time(), "machine_id": body.machineId, "operator_id": op, "issue": f["label"],
+            "priority": "urgent" if f["critical"] else "normal", "slot": "", "notes": f["note"],
+            "source": f"inspection #{iid}", "status": "requested",
+        })
+    if result["lockout"]:
+        ms.inspection = {"status": "locked", "id": iid, "failed": [f["label"] for f in result["failed"]]}
+        ms.commands.append({"command": "set", "field": "engineOn", "value": False})   # interlock
+        await engine.raise_alert(ms, "lockout", "critical",
+                                 "Machine locked out: critical defect found in pre-start inspection")
+    else:
+        ms.inspection = {"status": "done", "id": iid, "defects": len(result["failed"])}
+        await engine.clear_alert(ms, "no_inspection")
+    await engine.hub.send("telemetry", engine.summary(ms))
+    return {"id": iid, **result, "inspection": ms.inspection}
+
+
+@app.post("/api/inspection/{machine_id}/clear-lockout", tags=["inspection"])
+async def clear_lockout(machine_id: str):
+    """Maintenance has fixed the defect: machine may start again."""
+    ms = engine.state(machine_id)
+    ms.inspection = {"status": "done", "clearedBy": "maintenance"}
+    await engine.clear_alert(ms, "lockout")
+    ms.commands.append({"command": "set", "field": "engineOn", "value": True})
+    return {"ok": True}
+
+
+@app.get("/api/inspections", tags=["inspection"])
+def list_inspections(machineId: Optional[str] = None, limit: int = 20):
+    sql, params = "SELECT id, ts, machine_id, operator_id, items, passed, defects, photo IS NOT NULL AS hasPhoto FROM inspections", []
+    if machineId:
+        sql, params = sql + " WHERE machine_id = ?", [machineId]
+    rows = db.query(sql + " ORDER BY ts DESC LIMIT ?", params + [limit])
+    for r in rows:
+        r["items"] = json.loads(r["items"])
+    return rows
+
+
+# ---------- maintenance booking ----------
+
+class MaintenanceRequest(BaseModel):
+    machineId: str
+    issue: str
+    priority: Literal["normal", "urgent"] = "normal"
+    slot: str = ""
+    notes: str = ""
+    operatorId: Optional[str] = None
+
+
+@app.post("/api/maintenance", tags=["maintenance"])
+def book_maintenance(body: MaintenanceRequest):
+    mid = db.insert("maintenance", {
+        "ts": time.time(), "machine_id": body.machineId,
+        "operator_id": body.operatorId or (engine.state(body.machineId).operator or {}).get("id"),
+        "issue": body.issue, "priority": body.priority, "slot": body.slot, "notes": body.notes,
+        "source": "operator", "status": "requested",
+    })
+    return db.one("SELECT * FROM maintenance WHERE id = ?", [mid])
+
+
+@app.get("/api/maintenance", tags=["maintenance"])
+def list_maintenance(machineId: Optional[str] = None, status: Optional[str] = None):
+    sql, params = "SELECT * FROM maintenance WHERE 1=1", []
+    if machineId:
+        sql, params = sql + " AND machine_id = ?", params + [machineId]
+    if status:
+        sql, params = sql + " AND status = ?", params + [status]
+    return db.query(sql + " ORDER BY CASE priority WHEN 'urgent' THEN 0 ELSE 1 END, ts DESC", params)
+
+
+class MaintenanceUpdate(BaseModel):
+    status: Literal["requested", "scheduled", "in_progress", "done"]
+    slot: Optional[str] = None
+
+
+@app.patch("/api/maintenance/{mid}", tags=["maintenance"])
+def update_maintenance(mid: int, body: MaintenanceUpdate):
+    if body.slot is not None:
+        db.execute("UPDATE maintenance SET status = ?, slot = ? WHERE id = ?", [body.status, body.slot, mid])
+    else:
+        db.execute("UPDATE maintenance SET status = ? WHERE id = ?", [body.status, mid])
+    return db.one("SELECT * FROM maintenance WHERE id = ?", [mid])
+
+
+# ---------- SOS ----------
+
+class SosRequest(BaseModel):
+    machineId: str
+    reason: str = "Operator pressed SOS"
+
+
+@app.post("/api/sos", tags=["sos"])
+async def sos(body: SosRequest):
+    """Emergency: alerts the supervisor and every machine within 300 m, with distance and direction."""
+    return await engine.trigger_sos(engine.state(body.machineId), body.reason)
+
+
+class SosRespond(BaseModel):
+    machineId: str
+
+
+@app.post("/api/sos/{sos_id}/respond", tags=["sos"])
+async def sos_respond(sos_id: int, body: SosRespond):
+    r = await engine.respond_sos(sos_id, body.machineId)
+    if not r:
+        raise HTTPException(404, "SOS not found")
+    return r
+
+
+@app.post("/api/sos/{sos_id}/resolve", tags=["sos"])
+async def sos_resolve(sos_id: int):
+    r = await engine.resolve_sos(sos_id)
+    if not r:
+        raise HTTPException(404, "SOS not found")
+    return r
+
+
+@app.get("/api/sos", tags=["sos"])
+def list_sos(status: Optional[str] = "active"):
+    rows = db.query("SELECT id FROM sos_events" + (" WHERE status = ?" if status else "") + " ORDER BY ts DESC",
+                    [status] if status else [])
+    return [engine.get_sos(r["id"]) for r in rows]
 
 
 # ---------- supervisor ----------

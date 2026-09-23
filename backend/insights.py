@@ -16,10 +16,17 @@ CO2_KG_PER_L = 2.68                                        # diesel combustion
 WORK_HOURS_PER_YEAR = 8 * 300
 
 
+# Only alerts caused by how the machine is operated count against the operator.
+# Machine faults (overheat, engine_fault, SOS...) are not the operator's fault.
+BEHAVIOUR_ALERTS = ("seatbelt", "proximity", "unsafe_tilt", "overspeed", "idling", "drowsy",
+                    "camera_person", "anomaly", "geofence", "machine_proximity", "no_inspection")
+
+
 def safety_score(operator_id: str) -> Dict:
     week_ago = time.time() - 7 * 86400
-    rows = db.query("SELECT type, severity FROM incidents WHERE operator_id = ? AND ts > ?",
-                    [operator_id, week_ago])
+    marks = ",".join("?" for _ in BEHAVIOUR_ALERTS)
+    rows = db.query(f"SELECT type, severity FROM incidents WHERE operator_id = ? AND ts > ? AND type IN ({marks})",
+                    [operator_id, week_ago, *BEHAVIOUR_ALERTS])
     done = db.one("SELECT COUNT(DISTINCT module_id) AS n FROM training_progress "
                   "WHERE operator_id = ? AND score >= 60", [operator_id])["n"]
     penalty = sum(5 if r["severity"] == "critical" else 2 for r in rows)
@@ -105,8 +112,10 @@ def shift_report(machine_id: str) -> Dict:
                          [machine_id, stats["start"]])
     critical = sum(1 for i in incidents if i["severity"] == "critical")
 
-    # shift safety score: same weights as the weekly score, applied to this shift only
-    shift_safety = max(0, 100 - 5 * critical - 2 * (len(incidents) - critical))
+    # shift safety score: same weights as the weekly score, operator-behaviour alerts only
+    behaviour = [i for i in incidents if i["type"] in BEHAVIOUR_ALERTS]
+    b_crit = sum(1 for i in behaviour if i["severity"] == "critical")
+    shift_safety = max(0, 100 - 5 * b_crit - 2 * (len(behaviour) - b_crit))
     efficiency = max(0, 100 - stats["idlePct"] - 2 * stats["overspeedMin"])
 
     highlights, improve = [], []
