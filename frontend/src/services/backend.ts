@@ -18,7 +18,9 @@ import type {
   TrainingRecommendation,
 } from '../types/domain'
 
-export const API: string = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// Production build is served by the backend itself, so it talks to its own origin.
+export const API: string =
+  import.meta.env.VITE_API_URL || (import.meta.env.PROD ? window.location.origin : 'http://localhost:8000')
 
 export async function apiGet<T = any>(path: string): Promise<T> {
   const r = await fetch(API + path)

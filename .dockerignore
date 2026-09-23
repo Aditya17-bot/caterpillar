@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/__pycache__
+backend/app.db*
+backend/models/*.joblib
+data/*.csv
+dashboard
+.git
+.claude
+**/.env
+**/.env.local

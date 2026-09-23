@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
-export const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
+export const API =
+  import.meta.env.VITE_API_URL || (import.meta.env.PROD ? window.location.origin : "http://localhost:8000");
 
 export async function get(path) {
   const r = await fetch(API + path);

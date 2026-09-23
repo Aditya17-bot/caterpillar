@@ -1,0 +1,11 @@
+# Render Blueprint: one free Docker web service (backend + simulator + built frontend).
+services:
+  - type: web
+    name: cat-operator
+    runtime: docker
+    plan: free
+    branch: test
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false

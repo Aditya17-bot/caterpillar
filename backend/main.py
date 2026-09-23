@@ -11,10 +11,12 @@ import json
 import time
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import copilot
@@ -539,3 +541,10 @@ def health():
 @app.get("/models", tags=["meta"])
 def models():
     return ml.model_info()
+
+
+# ---------- built frontend (single-container deploy) ----------
+
+_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _DIST.is_dir():
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="frontend")
