@@ -43,7 +43,18 @@ simulator (virtual ESP32) ──HTTP POST──▶ gateway (Node/Express :4000) 
 
 ## Git workflow
 
-- `main` always runnable. No direct pushes.
-- Branch per feature: `simulator/panel`, `ml/speed-model`, `gateway/websocket`, `ui/training-hub`.
-- Open a PR, one teammate reviews, merge.
-- Pull `main` often.
+Two branches:
+- `main`: stable, always runnable. Demo runs from here.
+- `test`: everyone pushes work here. Pull often (`git pull origin test`) to avoid conflicts.
+
+When `test` runs end to end, merge `test` into `main`.
+
+Each person's task list is in their folder: `simulator/TASKS.md`, `ml-service/TASKS.md`, `gateway/TASKS.md`, `dashboard/TASKS.md`.
+
+## Datasets
+
+```
+pip install numpy pandas
+python data/generate.py
+```
+Creates 4 CSVs in `data/` (gitignored, regenerate anytime).
