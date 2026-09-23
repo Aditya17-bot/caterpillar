@@ -34,6 +34,7 @@ export function useBackendSync(live: any) {
   const r2 = useRef(0.982)
   const lastTs = useRef<Record<string, number>>({})
   const lastAdvisedAlert = useRef<string | null>(null)
+  const autoSelectedFor = useRef<string | null>(null)
 
   // one-off reference data
   useEffect(() => {
@@ -66,7 +67,13 @@ export function useBackendSync(live: any) {
       return machineFromBackend(mt, s, prev?.online !== undefined ? prev : undefined)
     })
     const knownIds = new Set(machines.map((m) => m.id))
-    const selectedMachineId = knownIds.has(store.selectedMachineId ?? '') ? store.selectedMachineId! : machines[0].id
+    let selectedMachineId = knownIds.has(store.selectedMachineId ?? '') ? store.selectedMachineId! : machines[0].id
+    // right after login, jump once to the machine the logged-in operator is driving
+    if (store.isAuthenticated && autoSelectedFor.current !== store.operator.id) {
+      const mine = machines.find((m) => m.currentOperatorId === store.operator.id)
+      if (mine) selectedMachineId = mine.id
+      if (mine || machines.every((m) => m.online !== undefined)) autoSelectedFor.current = store.operator.id
+    }
     const sel = machines.find((m) => m.id === selectedMachineId)!
     const selSummary: BackendSummary | undefined = live.machines[selectedMachineId]
 
@@ -92,11 +99,10 @@ export function useBackendSync(live: any) {
       sourcePage: a.category === 'system' ? 'Safety Center' : 'Live Operation',
     }))
 
-    // after an RFID scan keep showing the scanned badge (e.g. a denied one) instead of the logged-in operator
-    const operator: Operator =
-      store.authStatus !== 'pending'
-        ? store.operator
-        : (sel.currentOperatorId && store.operators.find((o) => o.id === sel.currentOperatorId)) || store.operator
+    // the logged-in operator (Login page) is the dashboard identity; before login show the machine's operator
+    const operator: Operator = store.isAuthenticated
+      ? store.operator
+      : (sel.currentOperatorId && store.operators.find((o) => o.id === sel.currentOperatorId)) || store.operator
     const drowsiness = drowsinessFor(sel)
     const hasOpenAlert = (selSummary?.activeAlerts || []).length > 0
 

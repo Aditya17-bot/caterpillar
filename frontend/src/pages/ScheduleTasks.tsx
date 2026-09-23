@@ -18,6 +18,7 @@ export default function ScheduleTasks() {
   const selectedMachineId = useAppStore((s) => s.selectedMachineId)
   const selectTask = useAppStore((s) => s.selectTask)
   const selectMachine = useAppStore((s) => s.selectMachine)
+  const operator = useAppStore((s) => s.operator)
   const [filter, setFilter] = useState<'all' | 'available'>('all')
   const interlockSensors = useAppStore((s) => s.interlockSensors)
   const operators = useAppStore((s) => s.operators)
@@ -126,7 +127,7 @@ export default function ScheduleTasks() {
                 <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider">Assigned Operator</span>
                 <div className="flex items-center gap-1.5 mt-1">
                   <Icon name="badge" className="text-[16px] text-primary" />
-                  <span className="font-body-lg text-body-lg text-on-surface font-bold">{assignedOp?.name ?? 'Sarah J.'}</span>
+                  <span className="font-body-lg text-body-lg text-on-surface font-bold">{assignedOp?.name ?? operator.name}</span>
                 </div>
               </div>
               <div className="flex flex-col">

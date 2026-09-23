@@ -15,6 +15,7 @@
     "@mediapipe/tasks-vision": "^1.0.1",
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow/tfjs": "^4.22.0",
+    "convex": "^1.46.0",
     "material-symbols": "^0.47.5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

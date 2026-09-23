@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type {
   AlertItem,
   DrowsinessReading,
@@ -14,7 +15,7 @@ import type {
 } from '../types/domain'
 import { mockMachines } from '../mock/machines'
 import { mockSchedule } from '../mock/schedule'
-import { currentOperator, getOperatorById } from '../mock/operators'
+import { currentOperator } from '../mock/operators'
 import { mockIncidents, nextIncidentId } from '../mock/incidents'
 import { mockNotifications } from '../mock/notifications'
 import { mockTraining } from '../mock/training'
@@ -38,6 +39,10 @@ interface AppState {
   acknowledgedAlertIds: string[]
   applyBackend: (partial: Partial<AppState>) => void
 
+  // Platform login (Convex-backed operator identity). Distinct from
+  // `authStatus` below, which represents machine-operation authorization
+  // (the existing RFID pre-op check) for whoever is currently logged in.
+  isAuthenticated: boolean
   operator: Operator
   authStatus: 'pending' | 'authorized' | 'denied'
   authDenialReason?: string
@@ -66,7 +71,9 @@ interface AppState {
   notifications: NotificationItem[]
   training: TrainingRecommendation[]
 
-  authenticateOperator: (asOperatorId?: string) => void
+  login: (operator: Operator) => void
+  logout: () => void
+  authenticateOperator: (forceDeny?: boolean) => void
   resetAuth: () => void
   selectTask: (taskId: string) => void
   selectMachine: (machineId: string) => void
@@ -88,13 +95,16 @@ function activeMachine(state: AppState): Machine {
 const simCommand = (machineId: string, command: string, field?: string, value?: unknown) =>
   apiSend('/api/sim/command', { machineId, command, field, value }).catch(() => undefined)
 
-export const useAppStore = create<AppState>((set, get) => ({
-  backendOnline: false,
-  operators: [],
-  acknowledgedAlertIds: [],
-  applyBackend: (partial) => set(partial),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      backendOnline: false,
+      operators: [],
+      acknowledgedAlertIds: [],
+      applyBackend: (partial) => set(partial),
 
-  operator: currentOperator,
+      isAuthenticated: false,
+      operator: currentOperator,
   authStatus: 'pending',
   workflowStep: 'idle',
 
@@ -121,34 +131,48 @@ export const useAppStore = create<AppState>((set, get) => ({
   notifications: mockNotifications,
   training: mockTraining,
 
-  authenticateOperator: (asOperatorId) => {
+  login: (operator) => {
+    set({ operator, isAuthenticated: true, authStatus: 'pending', authDenialReason: undefined })
+    // live mode: select the machine this operator is logged into, if any
+    const m = get().machines.find((x) => x.currentOperatorId === operator.id)
+    if (m) get().selectMachine(m.id)
+  },
+
+  logout: () =>
+    set({
+      isAuthenticated: false,
+      operator: currentOperator,
+      authStatus: 'pending',
+      authDenialReason: undefined,
+      workflowStep: 'idle',
+    }),
+
+  // Machine-operation authorization (the existing RFID pre-op check) — runs
+  // against whichever operator is currently logged in, never swaps identity.
+  // `forceDeny` lets the demo show the "access denied" UI state on demand
+  // without pretending a different operator scanned a badge.
+  authenticateOperator: (forceDeny = false) => {
     const state = get()
+    const operator = state.operator
     const machine = activeMachine(state)
-    let operator = asOperatorId ? (getOperatorById(asOperatorId) ?? state.operator) : currentOperator
-    if (state.backendOnline && state.operators.length) {
-      if (asOperatorId === 'UNAUTHORIZED') {
-        // pick someone who is not endorsed for this machine class (or is below Tier-3)
-        operator =
-          state.operators.find((o) => !o.certifiedMachineTypes.includes(machine.type)) ??
-          state.operators.find((o) => o.certificationTier < 3) ??
-          state.operators[state.operators.length - 1]
-      } else {
-        const task = state.tasks.find((t) => t.id === state.selectedTaskId)
-        const wanted = asOperatorId && asOperatorId !== 'OP-01' ? asOperatorId : machine.currentOperatorId ?? task?.assignedOperatorId
-        operator = state.operators.find((o) => o.id === wanted) ?? state.operators[0]
-      }
+    if (forceDeny) {
+      set({
+        authStatus: 'denied',
+        authDenialReason: 'Badge read error — RFID signal could not be verified. Re-scan required.',
+        workflowStep: 'rfid',
+      })
+      return
     }
     const result = authenticateRFID(operator, machine)
     if (result.authorized && state.backendOnline) simCommand(machine.id, 'set', 'login', true)
     set({
-      operator,
       authStatus: result.authorized ? 'authorized' : 'denied',
       authDenialReason: result.reasonDenied,
       workflowStep: result.authorized ? 'schedule' : 'rfid',
     })
   },
 
-  resetAuth: () => set({ operator: currentOperator, authStatus: 'pending', authDenialReason: undefined, workflowStep: 'rfid' }),
+  resetAuth: () => set({ authStatus: 'pending', authDenialReason: undefined, workflowStep: 'rfid' }),
 
   selectTask: (taskId) => {
     const task = get().tasks.find((t) => t.id === taskId)
@@ -335,6 +359,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       operationRunning: false,
       alerts: [],
     }),
-}))
+    }),
+    {
+      name: 'cat-soa-session',
+      // Only the login identity survives a page reload; live simulation
+      // state (telemetry, alerts, incidents, workflow step) always starts
+      // fresh so a refresh can never leave the demo in a half-finished state.
+      partialize: (state) => ({ isAuthenticated: state.isAuthenticated, operator: state.operator }),
+    },
+  ),
+)
 
 export const selectActiveMachine = (state: AppState) => activeMachine(state)

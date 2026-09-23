@@ -69,6 +69,9 @@ export interface MachineML {
 
 export type CertificationTier = 1 | 2 | 3 | 4
 
+export type OperatorSkill = 'Expert' | 'Intermediate' | 'Trainee'
+export type TrainingStatus = 'VALID' | 'EXPIRED'
+
 export interface Operator {
   id: string
   name: string
@@ -80,6 +83,13 @@ export interface Operator {
   medicalValidUntil: string
   shift: string
   siteRole: string
+  // Populated for operators sourced from the Convex login/identity layer.
+  // Optional so pre-existing mock/demo Operator records stay valid.
+  email?: string
+  rfidId?: string
+  skill?: OperatorSkill
+  trainingStatus?: TrainingStatus
+  faceVerificationEnabled?: boolean
 }
 
 export type TaskStatus = 'queued' | 'active' | 'completed' | 'scheduled'

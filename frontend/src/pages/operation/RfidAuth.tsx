@@ -32,14 +32,14 @@ export default function RfidAuth() {
             onClick={() => authenticateOperator()}
             className="px-space-md py-2 bg-primary-container hover:bg-primary text-on-primary-container hover:text-on-primary font-label-md text-label-md uppercase tracking-wider font-bold rounded transition-all"
           >
-            Simulate Authorized Badge
+            Scan RFID Badge ({operator.name.split(' ')[0]})
           </button>
           <button
-            onClick={() => authenticateOperator('UNAUTHORIZED')}
+            onClick={() => authenticateOperator(true)}
             className="px-space-md py-2 bg-error-container text-error hover:bg-error hover:text-on-error font-label-md text-label-md uppercase tracking-wider font-bold rounded flex items-center gap-1.5 transition-all"
           >
             <Icon name="block" className="text-[16px]" />
-            Simulate Unauthorized Badge
+            Simulate Badge Read Failure
           </button>
         </div>
       </SectionCard>
@@ -56,7 +56,7 @@ export default function RfidAuth() {
           {authorized
             ? `Machine Access Granted to ${machine.id}`
             : denied
-              ? `Access Denied: ${operator.id} Not Certified for ${machine.id}`
+              ? `Access Denied: ${operator.id} Not Authorized for ${machine.id}`
               : 'Scan badge to continue'}
         </h2>
         {denied && <p className="font-body-lg text-body-lg text-on-surface-variant">{authDenialReason}</p>}
@@ -79,10 +79,10 @@ export default function RfidAuth() {
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase">Machinery Certification</span>
             <div className="flex flex-wrap gap-1.5 mt-1.5">
               {operator.certifiedMachineTypes.map((t) => (
-                  <span key={t} className="px-2 py-1 bg-surface-container-high text-primary font-body-md text-body-md font-mono rounded font-semibold">
-                    {t.toUpperCase()} APPROVED
-                  </span>
-                ))}
+                <span key={t} className="px-2 py-1 bg-surface-container-high text-primary font-body-md text-body-md font-mono rounded font-semibold">
+                  {t.toUpperCase()} APPROVED
+                </span>
+              ))}
               {operator.certifiedMachineTypes.length === 0 && (
                 <span className="px-2 py-1 bg-error-container text-error font-body-md text-body-md font-mono rounded font-bold">
                   NO ENDORSEMENTS ON FILE
