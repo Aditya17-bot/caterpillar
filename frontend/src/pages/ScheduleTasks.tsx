@@ -1,8 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import EmptyState from '../components/common/EmptyState'
+import PageHeader from '../components/common/PageHeader'
 import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
 import StatusPill from '../components/common/StatusPill'
+import TaskTimeline from '../components/domain/TaskTimeline'
 import MachineCard from '../components/domain/MachineCard'
 import AIInsightPanel from '../components/domain/AIInsightPanel'
 import SafetyChecklistItem from '../components/domain/SafetyChecklistItem'
@@ -11,6 +14,12 @@ import { machineStatusToToken } from '../lib/statusColors'
 import { getTaskTimePrediction } from '../services/predictionService'
 
 export default function ScheduleTasks() {
+  const tasks = useAppStore(s => s.tasks)
+  const machines = useAppStore(s => s.machines)
+  if (!tasks.length || !machines.length) return <div className="p-6"><EmptyState title="No assignments yet" description="Your schedule will appear when tasks and machines are available." icon="calendar_month" /></div>
+  return <ScheduleContent />
+}
+function ScheduleContent() {
   const navigate = useNavigate()
   const tasks = useAppStore((s) => s.tasks)
   const machines = useAppStore((s) => s.machines)
@@ -35,9 +44,10 @@ export default function ScheduleTasks() {
 
   return (
     <div className="p-margin lg:p-margin-lg flex flex-col gap-space-lg">
+      <PageHeader eyebrow="Demo journey / 02" title="Schedule & tasks" description="Review AI time estimates, select equipment, and prepare for the shift." />
       <SectionCard variant="low" className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-space-md">
         <div className="flex flex-wrap items-center gap-space-md">
-          <div className="flex items-center bg-surface-container-lowest p-1 rounded">
+          <div className="flex flex-wrap items-center bg-surface-container-lowest p-1 rounded">
             {tasks.map((t) => (
               <button
                 key={t.id}
@@ -92,6 +102,7 @@ export default function ScheduleTasks() {
         </div>
       </SectionCard>
 
+      <TaskTimeline tasks={tasks.filter(t => t.assignedMachineId === selectedMachine.id || !t.assignedMachineId)} selectedId={selectedTaskId} onSelect={selectTask} />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
         <div className="xl:col-span-7 flex flex-col gap-space-md">
           {visibleMachines.map((m) => (

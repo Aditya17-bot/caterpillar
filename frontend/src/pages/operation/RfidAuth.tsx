@@ -23,7 +23,7 @@ export default function RfidAuth() {
             <Icon name="badge" className="text-[28px]" />
           </div>
           <div className="flex flex-col">
-            <span className="font-headline-md text-headline-md text-on-surface uppercase tracking-tight">RFID Operator Authentication</span>
+            <h1 className="font-headline-md text-headline-md text-on-surface tracking-tight">RFID operator authentication</h1>
             <span className="font-body-md text-body-md text-on-surface-variant">Simulated CheckMate Industrial RFID Reader — no real hardware involved.</span>
           </div>
         </div>

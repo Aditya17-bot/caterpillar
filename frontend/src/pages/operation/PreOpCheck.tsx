@@ -36,9 +36,9 @@ export default function PreOpCheck() {
           <span className="px-2 py-0.5 bg-primary-container text-on-primary-container font-label-sm text-label-sm uppercase tracking-wider rounded font-bold self-start">
             Pre-Operation Safety Check &amp; Readiness
           </span>
-          <span className="font-headline-lg text-headline-lg text-on-surface tracking-tight uppercase">
+          <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">
             {machine.id} ({machine.model}) — {operator.name}
-          </span>
+          </h1>
         </div>
         <div className="flex items-center gap-space-md bg-surface-container px-space-lg py-2.5 rounded shadow-sm">
           <StatusPill label={allPass ? 'Machine Ready // All Pre-Checks Passed' : 'Checks In Progress'} token={allPass ? 'tertiary' : 'primary'} pulse />

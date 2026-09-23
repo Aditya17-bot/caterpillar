@@ -7,6 +7,7 @@ interface SparklineProps {
 }
 
 export default function Sparkline({ points, token = 'primary', height = 32 }: SparklineProps) {
+  if (points.length < 2) return <span className="text-xs text-on-surface-variant">Collecting readings…</span>
   const width = 120
   const max = Math.max(...points)
   const min = Math.min(...points)
