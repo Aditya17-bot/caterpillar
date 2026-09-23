@@ -1,3 +1,5 @@
+import { Skeleton } from '../components/common/EmptyState'
+import { useDialogFocus } from '../components/common/useDialogFocus'
 import { useEffect, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmtTime, get } from "./api.js";
@@ -5,23 +7,26 @@ import { fmtTime, get } from "./api.js";
 // Incident "flight recorder": replay the readings and alerts around an incident.
 
 const SERIES = [
-  ["speedKmh", "Speed km/h", "#333"],
-  ["engineTempC", "Engine °C", "#c0392b"],
-  ["slopeDeg", "Slope °", "#2471a3"],
-  ["obstacleCm", "Obstacle cm", "#e0a800"],
+  ["speedKmh", "Speed km/h", "#ffd21c"],
+  ["engineTempC", "Engine °C", "#ffb4ab"],
+  ["slopeDeg", "Slope °", "#4cd7f6"],
+  ["obstacleCm", "Obstacle cm", "#56e5a9"],
 ];
 
 export default function BlackBox({ incidentId, onClose }) {
+  const dialogRef = useDialogFocus(true, onClose);
+  const [error, setError] = useState(null);
   const [inc, setInc] = useState(null);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timer = useRef(null);
 
   useEffect(() => {
+    setError(null);
     get(`/api/incidents/${incidentId}`).then((r) => {
       setInc(r);
       setCursor(0);
-    });
+    }).catch(() => setError("Recording unavailable. Close and reopen to retry."));
   }, [incidentId]);
 
   const rows = (inc?.blackbox?.readings || []).map((r) => ({ ...r, t: +(r.ts - inc.blackbox.incidentTs).toFixed(1) }));
@@ -40,7 +45,7 @@ export default function BlackBox({ incidentId, onClose }) {
     return () => clearInterval(timer.current);
   }, [playing, rows.length]);
 
-  if (!inc) return null;
+  if (!inc) return <div className="overlay"><div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Incident replay" className="modal">{error ? <p role="alert">{error}</p> : <Skeleton label="Loading incident recording" />}<button onClick={onClose}>Close</button></div></div>;
   const bb = inc.blackbox;
   const cur = rows[cursor] || {};
   const events = (bb?.events || []).map((e) => ({ ...e, t: +(e.ts - bb.incidentTs).toFixed(1) }));
@@ -54,7 +59,7 @@ export default function BlackBox({ incidentId, onClose }) {
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Incident replay" className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h2>
           Black box · incident #{inc.id} · {inc.machine_id}
         </h2>
@@ -68,7 +73,7 @@ export default function BlackBox({ incidentId, onClose }) {
           <>
             <div className="filters">
               <button onClick={() => { if (cursor >= rows.length - 1) setCursor(0); setPlaying(!playing); }}>{playing ? "Pause" : "▶ Play"}</button>
-              <input type="range" min={0} max={rows.length - 1} value={cursor} onChange={(e) => { setPlaying(false); setCursor(+e.target.value); }} style={{ flex: 1 }} />
+              <input aria-label="Replay time" type="range" min={0} max={rows.length - 1} value={cursor} onChange={(e) => { setPlaying(false); setCursor(+e.target.value); }} style={{ flex: 1 }} />
               <b>{cur.t > 0 ? "+" : ""}{cur.t}s</b>
               {!bb.complete && <span className="muted">(recording after the incident still being saved)</span>}
             </div>
@@ -91,8 +96,8 @@ export default function BlackBox({ incidentId, onClose }) {
                       <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} unit="s" />
                       <YAxis width={40} />
                       <Tooltip />
-                      <ReferenceLine x={0} stroke="#c0392b" strokeWidth={2} label="incident" />
-                      <ReferenceLine x={cur.t} stroke="#2471a3" />
+                      <ReferenceLine x={0} stroke="#ffb4ab" strokeWidth={2} label="incident" />
+                      <ReferenceLine x={cur.t} stroke="#4cd7f6" />
                       <Line dataKey={key} dot={false} isAnimationActive={false} stroke={color} />
                     </LineChart>
                   </ResponsiveContainer>
@@ -112,11 +117,11 @@ export default function BlackBox({ incidentId, onClose }) {
                 <div className="card">
                   <h3>Machine path</h3>
                   <svg viewBox="0 0 200 200" style={{ width: "100%", maxHeight: 220, background: "#c8b48a" }}>
-                    <polyline fill="none" stroke="#333" strokeDasharray="3 3" points={trail.map((r) => `${px(r.posX)},${py(r.posY)}`).join(" ")} />
+                    <polyline fill="none" stroke="#ffd21c" strokeDasharray="3 3" points={trail.map((r) => `${px(r.posX)},${py(r.posY)}`).join(" ")} />
                     {cur.posX != null && <circle cx={px(cur.posX)} cy={py(cur.posY)} r="6" fill="#ffcd11" stroke="#000" />}
                     {(() => {
                       const at = trail.reduce((b, r) => (Math.abs(r.t) < Math.abs(b.t) ? r : b), trail[0]);
-                      return <circle cx={px(at.posX)} cy={py(at.posY)} r="9" fill="none" stroke="#c0392b" strokeWidth="3" />;
+                      return <circle cx={px(at.posX)} cy={py(at.posY)} r="9" fill="none" stroke="#ffb4ab" strokeWidth="3" />;
                     })()}
                   </svg>
                   <div className="muted">Red circle: where the incident happened. {span.toFixed(0)} m across.</div>

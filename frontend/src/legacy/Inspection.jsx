@@ -1,3 +1,5 @@
+import { Skeleton } from '../components/common/EmptyState'
+import { useDialogFocus } from '../components/common/useDialogFocus'
 import { useEffect, useState } from "react";
 import { get, send } from "./api.js";
 
@@ -15,6 +17,7 @@ async function shrinkPhoto(file) {
 }
 
 export default function Inspection({ machineId, machine, onClose = undefined, inline = false, onDone = undefined }) {
+  const dialogRef = useDialogFocus(!inline, onClose);
   const [items, setItems] = useState([]);
   const [answers, setAnswers] = useState({});
   const [notes, setNotes] = useState({});
@@ -23,7 +26,7 @@ export default function Inspection({ machineId, machine, onClose = undefined, in
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    get("/api/inspection/items").then(setItems);
+    get("/api/inspection/items").then(setItems).catch(() => setError("Checklist unavailable. Reopen the inspection to retry."));
   }, []);
 
   const done = items.length > 0 && items.every((i) => answers[i.id] !== undefined);
@@ -50,13 +53,14 @@ export default function Inspection({ machineId, machine, onClose = undefined, in
   const Outer = "div";
   return (
     <Outer className={inline ? "" : "overlay"}>
-      <div className={inline ? "card" : "modal"}>
+      <div ref={dialogRef} tabIndex={inline ? undefined : -1} role={inline ? undefined : "dialog"} aria-modal={inline ? undefined : true} aria-label="Pre-start inspection" className={inline ? "card" : "modal"}>
         <h2>
           Pre-start inspection · {machineId} · {machine?.operator?.name || ""}
         </h2>
         {!result && (
           <>
             <p className="muted">Walk around the machine before starting. Items marked ⚠ lock the machine if they fail.</p>
+            {!items.length && !error && <Skeleton label="Loading inspection checklist" />}
             {groups.map((g) => (
               <div key={g}>
                 <h3>{g}</h3>
@@ -69,15 +73,16 @@ export default function Inspection({ machineId, machine, onClose = undefined, in
                         {i.label}
                       </span>
                       <span>
-                        <button className={answers[i.id] === true ? "pass on" : "pass"} onClick={() => setAnswers({ ...answers, [i.id]: true })}>
+                        <button aria-label={`${i.label}: OK`} aria-pressed={answers[i.id] === true} className={answers[i.id] === true ? "pass on" : "pass"} onClick={() => setAnswers({ ...answers, [i.id]: true })}>
                           OK
                         </button>{" "}
-                        <button className={answers[i.id] === false ? "fail on" : "fail"} onClick={() => setAnswers({ ...answers, [i.id]: false })}>
+                        <button aria-label={`${i.label}: Defect`} aria-pressed={answers[i.id] === false} className={answers[i.id] === false ? "fail on" : "fail"} onClick={() => setAnswers({ ...answers, [i.id]: false })}>
                           Defect
                         </button>
                       </span>
                       {answers[i.id] === false && (
                         <input
+                          aria-label={`Defect note for ${i.label}`}
                           className="note"
                           placeholder="Describe the defect"
                           value={notes[i.id] || ""}
@@ -91,7 +96,7 @@ export default function Inspection({ machineId, machine, onClose = undefined, in
             {failed.length > 0 && (
               <p>
                 Photo of defect:{" "}
-                <input type="file" accept="image/*" capture="environment" onChange={async (e) => e.target.files[0] && setPhoto(await shrinkPhoto(e.target.files[0]))} />
+                <input aria-label="Photo of defect" type="file" accept="image/*" capture="environment" onChange={async (e) => e.target.files[0] && setPhoto(await shrinkPhoto(e.target.files[0]))} />
                 {photo && <img src={photo} alt="defect" className="thumb" />}
               </p>
             )}

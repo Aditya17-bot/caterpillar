@@ -130,11 +130,11 @@ export default function CoPilot({ machineId, feed, hideFab = false }) {
     );
 
   return (
-    <div className="copilot">
+    <div className="copilot" role="region" aria-label="Voice co-pilot">
       <div className="copilot-head">
         <b>🎙 Co-pilot · {machineId}</b>
         <span className="muted">{source === "claude" ? "Claude" : source === "offline" ? "offline mode" : ""}</span>
-        <button onClick={() => setOpen(false)}>–</button>
+        <button aria-label="Close co-pilot" onClick={() => setOpen(false)}>×</button>
       </div>
       <div className="copilot-log" ref={logRef}>
         {msgs.length === 0 && (
@@ -161,14 +161,14 @@ export default function CoPilot({ machineId, feed, hideFab = false }) {
         <button type="button" className={listening ? "mic on" : "mic"} onClick={listen} title="Speak">
           {listening ? "● listening" : "🎤"}
         </button>
-        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask anything…" />
+        <input aria-label="Message to co-pilot" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask anything…" />
         <button disabled={busy}>Send</button>
       </form>
       <div className="copilot-opts">
         <button onClick={() => ask("", "/api/copilot/briefing")} disabled={busy}>
           Shift briefing
         </button>
-        <select value={lang} onChange={(e) => setLang(e.target.value)}>
+        <select aria-label="Co-pilot language" value={lang} onChange={(e) => setLang(e.target.value)}>
           {LANGS.map(([id, , label]) => (
             <option key={id} value={id}>
               {label}

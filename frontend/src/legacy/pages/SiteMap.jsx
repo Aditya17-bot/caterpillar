@@ -1,3 +1,4 @@
+import { Skeleton } from '../../components/common/EmptyState'
 import { useEffect, useRef, useState } from "react";
 import { get } from "../api.js";
 
@@ -103,6 +104,7 @@ function compass(dx, dy) {
 export default function SiteMap({ live, machineId, setMachineId, compact = false, height = undefined }) {
   const canvas = useRef(null);
   const wrap = useRef(null);
+  const [loadError, setLoadError] = useState(false);
   const [site, setSite] = useState(null);
   const [mode, setMode] = useState("terrain");
   const [follow, setFollow] = useState(true);
@@ -118,7 +120,7 @@ export default function SiteMap({ live, machineId, setMachineId, compact = false
   followRef.current = follow;
 
   useEffect(() => {
-    get("/api/site").then(setSite).catch(() => {});
+    get("/api/site").then(setSite).catch(() => setLoadError(true));
   }, []);
 
   useEffect(() => {
@@ -443,7 +445,7 @@ export default function SiteMap({ live, machineId, setMachineId, compact = false
           {hover.zone && <b className="bad"> · {hover.zone}</b>}
         </div>
       )}
-      {!site && <p className="muted" style={{ padding: 12 }}>Loading site…</p>}
+      {!site && (loadError ? <p role="alert" className="advisory">Site map unavailable. Reopen the map to retry.</p> : <Skeleton label="Loading site terrain" />)}
     </div>
   );
   if (compact) return canvasEl;

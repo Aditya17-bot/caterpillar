@@ -181,7 +181,7 @@ function DrowsinessPanel({ machineId, devices }) {
     <div className={"card" + (drowsy ? " tile-bad" : "")}>
       <h3>Cab camera: drowsiness</h3>
       <div className="filters">
-        <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <select aria-label="Camera device" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
           <option value="">default camera</option>
           {devices.map((d) => (
             <option key={d.deviceId} value={d.deviceId}>
@@ -205,7 +205,7 @@ function DrowsinessPanel({ machineId, devices }) {
       </div>
       <p>
         Eye openness (EAR): <b>{view.ear?.toFixed(3) ?? "–"}</b> · closed below{" "}
-        <input type="range" min="0.12" max="0.3" step="0.01" value={threshold} onChange={(e) => setThreshold(+e.target.value)} />{" "}
+        <input aria-label="Eye closure threshold" type="range" min="0.12" max="0.3" step="0.01" value={threshold} onChange={(e) => setThreshold(+e.target.value)} />{" "}
         {threshold.toFixed(2)} · face {view.face ? "found" : "not found"}
       </p>
       <p>
@@ -293,7 +293,7 @@ function ProximityPanel({ machineId, devices }) {
     <div className={"card" + (near ? " tile-bad" : "")}>
       <h3>Proximity camera: object detection</h3>
       <div className="filters">
-        <select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+        <select aria-label="Camera device" value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
           <option value="">default camera</option>
           {devices.map((d) => (
             <option key={d.deviceId} value={d.deviceId}>
@@ -310,7 +310,7 @@ function ProximityPanel({ machineId, devices }) {
       </div>
       <p>
         Person counts as "near" when it fills more than{" "}
-        <input type="range" min="0.05" max="0.5" step="0.01" value={nearFrac} onChange={(e) => setNearFrac(+e.target.value)} />{" "}
+        <input aria-label="Person proximity threshold" type="range" min="0.05" max="0.5" step="0.01" value={nearFrac} onChange={(e) => setNearFrac(+e.target.value)} />{" "}
         {Math.round(nearFrac * 100)}% of the frame ·{" "}
         <b className={near ? "bad" : "ok"}>{near ? "PERSON NEAR MACHINE" : "clear"}</b>
       </p>
