@@ -47,7 +47,7 @@ export default function Training({ operatorId: liveOperator }) {
     <>
       <h2>
         Training hub ·{" "}
-        <select value={operatorId} onChange={(e) => setOperatorId(e.target.value)}>
+        <select aria-label="Training operator" value={operatorId} onChange={(e) => setOperatorId(e.target.value)}>
           {operators.map((o) => (
             <option key={o.id} value={o.id}>
               {o.id} {o.name}
@@ -129,7 +129,7 @@ export default function Training({ operatorId: liveOperator }) {
       <div className="card">
         <h3>Book an instructor</h3>
         <form onSubmit={book} className="filters">
-          <select required value={booking.instructor} onChange={(e) => setBooking({ ...booking, instructor: e.target.value })}>
+          <select aria-label="Training instructor" required value={booking.instructor} onChange={(e) => setBooking({ ...booking, instructor: e.target.value })}>
             <option value="">instructor…</option>
             {data.instructors.map((i) => (
               <option key={i}>{i}</option>
@@ -137,6 +137,7 @@ export default function Training({ operatorId: liveOperator }) {
           </select>
           <input
             required
+            aria-label="Training session time"
             type="datetime-local"
             value={booking.slot}
             onChange={(e) => setBooking({ ...booking, slot: e.target.value })}

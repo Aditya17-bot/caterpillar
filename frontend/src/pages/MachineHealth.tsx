@@ -1,3 +1,4 @@
+import { useLiveData } from '../services/useBackendSync'
 import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
 import StatusPill from '../components/common/StatusPill'
@@ -9,22 +10,9 @@ import { useAppStore } from '../store/useAppStore'
 import { machineStatusToToken } from '../lib/statusColors'
 import { getFaultDiagnosis } from '../services/predictionService'
 
-// Deterministic pseudo-history ending at the current live reading, purely for
-// the trend sparkline visual — matches the Stitch sensor-card trend pattern.
-function seededTrend(seed: string, current: number): number[] {
-  let h = 0
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
-  const points: number[] = []
-  for (let i = 0; i < 8; i++) {
-    h = (h * 1103515245 + 12345) >>> 0
-    const noise = ((h % 100) / 100 - 0.5) * current * 0.12
-    points.push(Math.max(0, current - current * 0.08 + noise))
-  }
-  points.push(current)
-  return points
-}
-
 export default function MachineHealth() {
+  const live = useLiveData()
+  const backendOnline = useAppStore(s => s.backendOnline)
   const machines = useAppStore((s) => s.machines)
   const selectedMachineId = useAppStore((s) => s.selectedMachineId)
   const selectMachine = useAppStore((s) => s.selectMachine)
@@ -41,7 +29,7 @@ export default function MachineHealth() {
             <Icon name="vital_signs" className="text-[24px]" />
           </div>
           <div className="flex flex-col">
-            <span className="font-headline-md text-headline-md uppercase tracking-tight text-primary">Machine Health</span>
+            <h1 className="font-headline-md text-headline-md tracking-tight text-on-surface">Machine Health</h1>
             <span className="font-body-md text-body-md text-on-surface-variant">Predictive Telemetric Condition Monitoring</span>
           </div>
         </div>
@@ -137,14 +125,14 @@ export default function MachineHealth() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-space-sm">
               {(
                 [
-                  { label: 'Coolant Trend', value: machine.telemetry.engineTempC, token: 'primary' },
-                  { label: 'Pressure Trend', value: machine.telemetry.hydraulicPressureBar, token: 'secondary' },
-                  { label: 'Vibration Trend', value: machine.telemetry.vibrationG, token: machine.telemetry.vibrationG > 1.5 ? 'error' : 'tertiary' },
-                  { label: 'RPM Trend', value: machine.telemetry.rpm, token: 'tertiary' },
-                ] satisfies { label: string; value: number; token: 'primary' | 'secondary' | 'tertiary' | 'error' }[]
+                  { label: 'Coolant · °C', field: 'temp', token: 'primary' },
+                  { label: 'Speed · km/h', field: 'speed', token: 'secondary' },
+                  { label: 'Slope · degrees', field: 'slope', token: 'tertiary' },
+                  { label: 'Proximity · cm', field: 'obstacle', token: 'tertiary' },
+                ] satisfies { label: string; field: string; token: 'primary' | 'secondary' | 'tertiary' | 'error' }[]
               ).map((t) => (
-                <div key={t.label} className="bg-surface-container-lowest rounded p-1.5 h-8 flex items-center">
-                  <Sparkline points={seededTrend(machine.id + t.label, t.value)} token={t.token} height={26} />
+                <div key={t.label} className="bg-surface-container-lowest rounded p-3 flex flex-col gap-2 min-h-24">
+                  <p className="text-xs text-on-surface-variant">{t.label}</p><div className="h-8 w-full">{backendOnline && (live?.history?.[machine.id]?.length ?? 0) > 1 ? <Sparkline points={live.history[machine.id].map((p: Record<string, number>) => p[t.field]).filter(Number.isFinite)} token={t.token} height={26} /> : <span className="text-xs text-on-surface-variant">{backendOnline ? 'Collecting readings…' : 'Live history unavailable'}</span>}</div>
                 </div>
               ))}
             </div>

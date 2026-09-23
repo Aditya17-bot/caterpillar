@@ -77,17 +77,17 @@ export default function Maintenance({ machineId, machine }) {
       <div className="card">
         <h3>Book maintenance</h3>
         <form onSubmit={book} className="filters">
-          <select required value={form.issue} onChange={(e) => setForm({ ...form, issue: e.target.value })}>
+          <select aria-label="Maintenance issue" required value={form.issue} onChange={(e) => setForm({ ...form, issue: e.target.value })}>
             <option value="">issue…</option>
             {ISSUES.map((i) => (
               <option key={i}>{i}</option>
             ))}
           </select>
-          <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
+          <select aria-label="Maintenance priority" value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}>
             <option value="normal">normal</option>
             <option value="urgent">urgent</option>
           </select>
-          <input type="datetime-local" value={form.slot} onChange={(e) => setForm({ ...form, slot: e.target.value })} />
+          <input aria-label="Preferred service time" type="datetime-local" value={form.slot} onChange={(e) => setForm({ ...form, slot: e.target.value })} />
           <input style={{ minWidth: 260 }} placeholder="notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           <button>Book</button>
         </form>

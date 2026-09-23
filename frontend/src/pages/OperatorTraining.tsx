@@ -19,7 +19,7 @@ export default function OperatorTraining() {
   const training = useAppStore((s) => s.training)
   const operator = useAppStore((s) => s.operator)
   const backendOnline = useAppStore((s) => s.backendOnline)
-  const openHub = () => document.getElementById('training-hub')?.scrollIntoView({ behavior: 'smooth' })
+  const openHub = () => document.getElementById('training-hub')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })
 
   return (
     <div className="p-space-lg flex flex-col gap-space-lg">
@@ -65,9 +65,9 @@ export default function OperatorTraining() {
               </span>
             </div>
             {!t.completed && (
-              <button onClick={openHub} className="mt-1 w-full py-2.5 px-space-md bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2">
+              <button disabled={!backendOnline} onClick={openHub} className="mt-1 w-full py-2.5 px-space-md bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2">
                 <Icon name="play_arrow" className="text-[18px]" />
-                Enroll in Module
+                {backendOnline ? 'Open training module' : 'Connect to access training'}
               </button>
             )}
           </SectionCard>

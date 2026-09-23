@@ -1,3 +1,4 @@
+import { Skeleton } from '../../components/common/EmptyState'
 import { useEffect, useState } from "react";
 import { fmtTime, get, send } from "../api.js";
 
@@ -53,13 +54,14 @@ function Report({ r }) {
 }
 
 export default function Shift({ machineId, live }) {
+  const [error, setError] = useState(null);
   const [current, setCurrent] = useState(null);
   const [final, setFinal] = useState(null);
   const [past, setPast] = useState([]);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    const load = () => get(`/api/shift/${machineId}`).then(setCurrent).catch(() => {});
+    const load = () => get(`/api/shift/${machineId}`).then(r => { setCurrent(r); setError(null); }).catch(() => setError("Shift data unavailable. Retrying automatically…"));
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
@@ -73,6 +75,8 @@ export default function Shift({ machineId, live }) {
     setBusy(true);
     try {
       setFinal(await send(`/api/shift/${machineId}/end`, {}));
+    } catch {
+      setError("Unable to generate report. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -106,7 +110,8 @@ export default function Shift({ machineId, live }) {
         Live totals and averages since login (updates every 5 s).{" "}
         <button onClick={endShift} disabled={busy}>{busy ? "Generating report…" : "End shift & generate report"}</button>
       </p>
-      {current ? <Report r={current} /> : <p className="muted">Loading…</p>}
+      {error && <p role="alert" className="advisory">{error}</p>}
+      {current ? <Report r={current} /> : !error && <Skeleton label="Loading shift report" />}
 
       <h2>Past shift reports</h2>
       {past.length === 0 && <p className="muted">None yet</p>}

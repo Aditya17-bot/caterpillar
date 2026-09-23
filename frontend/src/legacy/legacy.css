@@ -112,3 +112,48 @@
   .pl-72 { padding-left: 0 !important; }
   .legacy { color: #000; }
 }
+
+/* Shared cab visual language; feature event handlers and API contracts are unchanged. */
+.legacy {
+  --bg: #0f131c; --card: #181c24; --card-low: #111720; --card-high: #262e3a;
+  --line: #303946; --text: #e8edf5; --muted: #b5bfce;
+  --amber: #ffd21c; --amber-strong: #ffd21c;
+  line-height: 1.55;
+}
+.legacy h2 { font-size: 22px; letter-spacing: -.025em; text-transform: none; margin: 24px 0 16px; }
+.legacy h3 { font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--text); margin-bottom: 14px; }
+.legacy button { min-height: 42px; padding: 9px 14px; border-radius: 8px; font-size: 13px; text-transform: none; letter-spacing: 0; }
+.legacy button.primary, .legacy button:hover:not(:disabled) { color: #201b00; }
+.legacy button:disabled { opacity: .6; }
+.legacy input:not([type=checkbox]):not([type=radio]):not([type=range]), .legacy select, .legacy textarea { min-height: 42px; border-radius: 8px; padding: 9px 12px; max-width: 100%; }
+.legacy .card { padding: 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 4px 20px #00000012; }
+.legacy .tiles, .legacy .grid2, .legacy .grid3, .legacy .stat-groups, .legacy .modules { gap: 16px; }
+.legacy .grid2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); }
+.legacy .grid3, .legacy .modules { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.legacy .tile { padding: 16px; border-radius: 8px; }
+.legacy .tile-label { font-size: 11px; letter-spacing: .08em; }
+.legacy .tile-value { font-size: 28px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.legacy .tile-value small { margin-left: 4px; }
+.legacy th { padding: 14px 12px; }
+.legacy td { padding: 12px; }
+.legacy .advisory, .legacy .alert { padding: 14px 16px; border-radius: 8px; }
+.legacy .check-row { padding: 14px 0; gap: 12px; }
+.legacy .modal { padding: 24px; box-shadow: 0 24px 80px #0008; border-radius: 12px; }
+.legacy .overlay { backdrop-filter: blur(5px); }
+.legacy .copilot { width: 420px; border-color: var(--line); box-shadow: 0 18px 60px #0009; }
+.legacy .copilot-head { padding: 14px 16px; color: #201b00; }
+.legacy .copilot-head button, .legacy .copilot-head .muted { color: #201b00; }
+.legacy .copilot-log { padding: 16px; }
+.legacy .copilot-input, .legacy .copilot-opts { padding: 12px; gap: 8px; }
+.legacy .copilot-input input { min-width: 0; }
+.legacy .bubble { padding: 12px 14px; }
+.legacy .bubble.user { color: #201b00; }
+.legacy .buttons { gap: 8px; }
+.legacy .map-wrap { border: 1px solid var(--line); }
+.legacy table { display: block; overflow-x: auto; }
+@media (max-width: 700px) {
+  .legacy .card { padding: 16px; }
+  .legacy .map-layout { grid-template-columns: minmax(0, 1fr); }
+  .legacy .overlay { padding-top: 24px; }
+  .legacy .copilot { max-height: calc(100dvh - 100px); }
+}
