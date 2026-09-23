@@ -48,6 +48,7 @@ export default function Header({
   const selectedMachineId = useAppStore((s) => s.selectedMachineId)
   const selectMachine = useAppStore((s) => s.selectMachine)
   const operator = useAppStore((s) => s.operator)
+  const logout = useAppStore((s) => s.logout)
   const notifications = useAppStore((s) => s.notifications)
   const unread = notifications.filter((n) => !n.read).length
   return (
@@ -129,6 +130,17 @@ export default function Header({
             {unread}
           </span>
         )}
+      </button>
+      <button
+        onClick={() => {
+          logout()
+          navigate('/login')
+        }}
+        aria-label="Log out"
+        title="Log out"
+        className="p-2 text-on-surface-variant hover:text-error header-secondary"
+      >
+        <Icon name="logout" className="text-xl" />
       </button>
       <SosButton machineId={selectedMachineId} />
     </header>

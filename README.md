@@ -36,6 +36,8 @@ npm install
 npm run dev                          # http://localhost:5173
 ```
 
+The app opens on a login screen (RFID badge or face verification, simulated). Operators come from Convex when `VITE_CONVEX_URL` is set in `frontend/.env.local` (see `frontend/.env.example`, run `npx convex dev` in `frontend/`), otherwise from the backend's operator list.
+
 `frontend/` is the main UI (React + TypeScript + Tailwind). It streams live data from the backend and falls back to built-in demo data when the backend is down (header shows LIVE / DEMO DATA). `dashboard/` is the earlier plain UI, kept for reference (`npm run dev` there serves on 5175).
 
 API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python seed.py`.

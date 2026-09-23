@@ -45,6 +45,7 @@ export default function Sidebar({
 }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
+  const logout = useAppStore((s) => s.logout)
   const resetDemo = useAppStore((s) => s.resetDemo)
   const [visited, setVisited] = useState<string[]>([])
   useEffect(() => {
@@ -121,6 +122,7 @@ export default function Sidebar({
             <Icon name="restart_alt" className="text-lg" />
             Restart demo journey
           </button>
+          <button className="btn-secondary w-full mt-2 min-[701px]:hidden" onClick={() => { logout(); navigate('/login'); onClose() }}><Icon name="logout" className="text-lg" />Log out</button>
         </div>
       </aside>
     </>

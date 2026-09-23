@@ -39,8 +39,7 @@ export const mockOperators: Operator[] = [
   },
 ]
 
+// Pre-login/post-logout placeholder only. The real, dynamic operator comes
+// from Convex via the Login page (see src/services/operatorMapper.ts) once
+// authenticated — see useAppStore's `login`/`logout` actions.
 export const currentOperator = mockOperators[0]
-
-export function getOperatorById(id: string): Operator | undefined {
-  return mockOperators.find((o) => o.id === id)
-}
