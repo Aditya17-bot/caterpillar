@@ -1,60 +1,71 @@
 # Smart Operator Assistant for CAT Machinery
 
-An end-to-end intelligent companion for excavator/loader operators: live safety monitoring, daily tasks, training, anomaly detection and ML predictions.
+An end-to-end intelligent companion for excavator/loader operators: live safety monitoring, daily tasks with ML time estimates, training hub, unusual-behavior detection, and in-browser camera AI (drowsiness + person detection).
 
 ## Architecture
 
-No physical hardware: sensors are simulated by a virtual machine control panel. The ESP32 circuit is designed in Wokwi to show the hardware path.
+```
+simulator/sim.py  ── POST /api/telemetry every 1 s ──▶  backend (FastAPI :8000)
+ (virtual machines,     ◀── queued commands in response ──   ├─ 4 ML models (scikit-learn)
+  scenarios)                                                  ├─ alert rules → incidents (SQLite)
+                                                              ├─ 15-min usage windows → anomaly model
+                                                              └─ WebSocket /ws
+                                                                   │
+dashboard (React :5173)  ◀────────── live telemetry, alerts ───────┘
+ └─ camera AI in the browser (MediaPipe eyes, Teachable Machine, COCO-SSD)
+      └─ POST /api/events/camera when drowsy / person near
+```
 
+No physical hardware: the simulator plays the role of the ESP32 + sensors (RFID, DHT22, HC-SR04, MPU6050, seatbelt switch). It sends the same JSON a real board would, so swapping in hardware later changes nothing downstream.
+
+## Run it (3 terminals)
+
+```bash
+# 1. backend (first start trains models + seeds DB, ~20 s)
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --reload --port 8000
+
+# 2. simulator
+pip install httpx
+python simulator/sim.py              # add --chaos 30 for random scenarios
+
+# 3. dashboard
+cd dashboard
+npm install
+npm run dev                          # http://localhost:5173
 ```
-simulator (virtual ESP32) ──HTTP POST──▶ gateway (Node/Express :4000) ──HTTP──▶ ml-service (FastAPI :8000)
- + control panel :5174              │   │
-                                     │   └── MongoDB (operators, tasks, incidents, telemetry)
-                                     │
-                              WebSocket (socket.io)
-                                     ▼
-                         dashboard (React :5173)  ◀── webcam drowsiness (Teachable Machine, in browser)
-```
+
+API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python seed.py`.
 
 ## Folders
 
-| Folder        | Owner    | What                                                        |
-|---------------|----------|-------------------------------------------------------------|
-| `simulator/`  | Member 1 | Virtual machine control panel, headless sim, Wokwi circuit, demo |
-| `ml-service/` | Member 2 | FastAPI + scikit-learn models, training notebooks           |
-| `gateway/`    | Member 3 | Express API, WebSocket, MongoDB, alert rules, safety score |
-| `dashboard/`  | Member 4 | React dashboard, training hub, drowsiness webcam            |
-| `data/`       | Member 2 | Datasets (real or synthetic) for training                   |
-| `docs/`       | All      | `CONTRACT.md` = shared JSON formats. Change only with team agreement. |
+| Folder | What |
+|---|---|
+| `data/` | `generate.py` makes the 4 synthetic training datasets |
+| `backend/` | FastAPI app: ML (`ml.py`, `train.py`), live pipeline + alerts (`engine.py`), REST (`main.py`), SQLite (`db.py`, `seed.py`), training content (`training.py`) |
+| `simulator/` | `sim.py` virtual machines |
+| `dashboard/` | React (Vite) dashboard: Live, Camera, Tasks, Incidents, Training, Simulator pages. Intentionally plain, to be restyled |
+| `docs/` | `CONTRACT.md` API formats · `TEAM.md` who does what next |
 
 ## Features vs problem statement
 
-| Problem statement requirement        | Our feature                                                        |
-|--------------------------------------|--------------------------------------------------------------------|
-| Daily task dashboard                 | Operator logs in via RFID, sees today's tasks + predicted time     |
-| Seatbelt compliance                  | Seatbelt signal (simulated), alert if engine on + belt off         |
-| Proximity hazards                    | HC-SR04 distance, tiered warning/critical alerts                   |
-| Incident logging                     | Every critical alert auto-saved to MongoDB, incident log page      |
-| Working conditions                   | DHT22 temp/humidity, MPU6050 slope, factored into ML models        |
-| Operator training hub                | Videos + quizzes + instructor booking + score tracking             |
-| Unusual behavior (idling, unsafe)    | Idle-time rule + IsolationForest anomaly model, harsh-tilt events  |
-| Task time estimation                 | Regression model (task type, slope, temp, operator history)        |
-| Extra                                | Drowsiness (webcam), engine fault classifier, smart speed advisor, operator safety score |
+| Problem statement | Implementation |
+|---|---|
+| Daily task dashboard | Tasks page: today's tasks per machine with ML predicted time + range, start/complete, actual vs predicted |
+| Seatbelt compliance | Engine on + belt off > 5 s → critical alert + incident |
+| Proximity hazards | Distance sensor tiers (< 1 m warning, < 50 cm critical) + camera person detection (COCO-SSD) |
+| Incident logging | Every warning/critical alert saved with a sensor snapshot; filterable incident log |
+| Working conditions | Slope, surface, temp, weather feed the speed and task-time models; terrain advisory |
+| Operator training hub | Modules with videos + graded quizzes, instructor booking, recommendations driven by the operator's incidents |
+| Unusual behavior | Idle timer alert + IsolationForest on 15-min usage windows (idling, unsafe operation, fuel waste) |
+| Task time estimation | RandomForest on task type, volume, soil, slope, weather, operator experience |
+| Extra | Engine fault classifier, ML speed advisor + overspeed alert, drowsiness (MediaPipe + optional Teachable Machine), operator safety score |
+
+Model metrics: `backend/RESULTS.md`.
 
 ## Git workflow
 
-Two branches:
-- `main`: stable, always runnable. Demo runs from here.
-- `test`: everyone pushes work here. Pull often (`git pull origin test`) to avoid conflicts.
-
-When `test` runs end to end, merge `test` into `main`.
-
-Each person's task list is in their folder: `simulator/TASKS.md`, `ml-service/TASKS.md`, `gateway/TASKS.md`, `dashboard/TASKS.md`.
-
-## Datasets
-
-```
-pip install numpy pandas
-python data/generate.py
-```
-Creates 4 CSVs in `data/` (gitignored, regenerate anytime).
+- `main`: stable, demo runs from here.
+- `test`: everyone pushes work here. `git pull origin test` often.
+- Merge `test` into `main` when it runs end to end.

@@ -1,97 +1,97 @@
-# Shared contract (agree on this first, then everyone works in parallel)
+# API contract
 
-## Ports
-- gateway: `http://localhost:4000`
-- ml-service: `http://localhost:8000`
-- dashboard: `http://localhost:5173`
-- MongoDB: `mongodb://localhost:27017/cat_assistant`
+Backend: `http://localhost:8000` (interactive docs at `/docs`). Dashboard: `http://localhost:5173`.
+Change a format only after telling the team; the simulator, backend and dashboard all depend on it.
 
-## 1. Telemetry: simulator (virtual ESP32) → gateway
-`POST /api/telemetry` every 1 s
+## 1. Telemetry: simulator (or ESP32) → backend
+
+`POST /api/telemetry` every 1 s per machine. Only `machineId` is required; missing fields get safe defaults.
 
 ```json
 {
-  "machineId": "EXC-001",
-  "rfid": "A1B2C3D4",
-  "ts": 1727080000,
-  "engineOn": true,
-  "seatbelt": false,
-  "engineTempC": 92.4,
-  "humidity": 61.0,
-  "obstacleCm": 145,
-  "accel": { "x": 0.12, "y": -0.03, "z": 9.78 },
-  "gyro":  { "x": 0.5,  "y": 1.2,   "z": -0.1 },
-  "slopeDeg": 7.3,
-  "vibration": 0.42
+  "machineId": "EXC-001", "machineType": "excavator", "rfid": "A1B2C3D4", "ts": 1727080000.0,
+  "engineOn": true, "seatbelt": true,
+  "engineTempC": 92.4, "humidity": 61.0, "obstacleCm": 145,
+  "accel": { "x": 1.2, "y": -0.03, "z": 9.7 }, "gyro": { "x": 0.5, "y": 1.2, "z": -0.1 },
+  "slopeDeg": 7.3, "vibration": 0.42, "speedKmh": 6.1, "rpm": 1700,
+  "oilPressurePsi": 50, "engineHours": 5123.4, "loadPct": 70, "surface": "gravel",
+  "fuelRateLph": 24.5, "loadCycle": false, "harshEvent": false,
+  "phase": "work", "scenarios": []
 }
 ```
 
-## 2. Operator login: simulator → gateway
-`POST /api/auth/rfid` `{ "rfid": "A1B2C3D4", "machineId": "EXC-001" }`
-→ `{ "ok": true, "operator": { "id": "OP-01", "name": "Ravi", "certified": ["excavator"] } }`
+- `rfid` present = operator logged in (looked up in the operators table); `null` = logged out.
+- `loadCycle`: true on the tick a bucket cycle completes. `harshEvent`: sudden jolt this tick.
+- `phase`, `scenarios`: simulator-only debug info, shown on the Simulator page.
 
-## 3. ML service (gateway → ml-service)
+Response: `{ "ok": true, "commands": [ { "command": "overheat", "field": null, "value": null } ] }`.
+Commands are queued with `POST /api/sim/command` (dashboard Simulator page).
 
-All fields camelCase. Only **bold** fields are required; the rest have defaults. Live docs: `http://localhost:8000/docs`. Bad enum values return 422.
+| command | effect |
+|---|---|
+| `normal` | clear all scenarios |
+| `set` + `field`/`value` | `engineOn`, `seatbelt`, `login` (true/false) |
+| `overheat`, `worker_approach`, `steep_slope`, `unbuckle`, `long_idle`, `overspeed`, `bearing_wear`, `low_oil`, `fuel_waste`, `harsh` | timed scenario |
 
-**`POST /predict/speed`**: call on every telemetry tick
-```json
-{ "slopeDeg": 7.3, "machineType": "excavator", "accel": {"x":0.12,"y":-0.03,"z":9.78},
-  "gyro": {"x":0.5,"y":1.2,"z":-0.1}, "vibration": 0.42, "loadPct": 50, "surface": "gravel" }
-```
-Required: **slopeDeg**. `machineType`: excavator | loader | dozer. `surface`: asphalt | gravel | sand | mud. If `accel` is missing it's derived from the slope.
-→ `{ "speedKmh": 8.5, "slopeDeg": 7.3, "advisory": "Normal terrain." }`
+## 2. Camera events: dashboard → backend
 
-**`POST /predict/fault`**: call on every telemetry tick (or every 5 s)
-```json
-{ "engineTempC": 92.4, "vibration": 0.42, "oilPressurePsi": 50, "rpm": 1600,
-  "humidity": 61, "engineHours": 5000, "obstacleCm": 145 }
-```
-Required: **engineTempC, vibration**.
-→ `{ "fault": "normal", "prob": 0.93, "probabilities": { "normal": 0.93, "overheating": 0.04, ... } }`
-Fault classes: normal | overheating | bearing_wear | low_oil_pressure | sensor_fault.
+`POST /api/events/camera` `{ "machineId": "EXC-001", "kind": "drowsy" | "person", "confidence": 0.9 }`
+Re-send every ~2 s while the condition lasts; the alert clears 8 s after the last event.
 
-**`POST /predict/task-time`**: call when loading today's tasks
-```json
-{ "taskType": "trenching", "machineId": "EXC-001", "operatorId": "OP-01", "volumeM3": 200,
-  "soilType": "clay", "slopeDeg": 5, "tempC": 32, "weather": "clear", "timeOfDay": "morning" }
-```
-Required: **taskType** (trenching | digging | loading | backfilling | hauling | grading). `soilType`: sand | gravel | clay | rock. `weather`: clear | dust | fog | rain. `timeOfDay` defaults to the current time. `tempC` is the ambient air temp, not the engine temp. Operator experience is looked up from `operatorId` (OP-01..OP-10), or pass `operatorExperienceYrs`.
-→ `{ "minutes": 42.5, "low": 36.1, "high": 49.0, "operatorExperienceYrs": 6.8 }` (low/high = 10th-90th percentile)
+## 3. WebSocket: backend → dashboard
 
-**`POST /predict/anomaly`**: gateway aggregates each machine over a 15-minute window, then calls once per window
-```json
-{ "idleMin": 11, "fuelUsedL": 2.1, "loadCycles": 3, "avgRpm": 850, "maxTiltDeg": 8,
-  "harshEvents": 0, "overspeedEvents": 0, "seatbeltOffSec": 0, "proximityAlerts": 0 }
-```
-Required: **idleMin** (0-15).
-→ `{ "anomaly": true, "reason": "excessive_idling", "reasons": ["excessive_idling"], "score": -0.08 }`
-Reasons: normal | excessive_idling | unsafe_operation | fuel_waste | unusual_pattern.
+`ws://localhost:8000/ws`. Every message is `{ "event": "...", "data": {...} }`.
 
-`GET /health` → `{ "ok": true, "models": [...] }` · `GET /models` → metrics per model
+| event | data |
+|---|---|
+| `snapshot` | list of machine summaries (sent on connect) |
+| `telemetry` | machine summary: `{ machineId, machineType, online, operator, telemetry, predictions: { optimalSpeedKmh, advisory, fault, faultProb }, activeAlerts: [...] }` |
+| `alert` | `{ id, machineId, operatorId, type, severity: "warning" \| "critical", message, ts }` |
+| `alert_cleared` | `{ machineId, type }` |
+| `login` / `logout` | `{ machineId, operator }` / `{ machineId }` |
+| `insight` | usage window result: `{ machineId, operatorId, ts, features, anomaly, reason, reasons, score }` |
+| `machine_offline` | `{ machineId }` (no telemetry for 5 s) |
 
-## 4. WebSocket: gateway → dashboard (socket.io)
+Alert types and rules (in `backend/engine.py`):
 
-| Event       | Payload                                                                 |
-|-------------|-------------------------------------------------------------------------|
-| `telemetry` | telemetry object + `{ "predictedSpeedKmh": 8.5 }`                       |
-| `alert`     | `{ "id", "machineId", "type", "severity": "info|warning|critical", "message", "ts" }` |
-| `login`     | operator object                                                         |
+| type | rule |
+|---|---|
+| `seatbelt` | engine on, belt off > 5 s → critical |
+| `proximity` | engine on, obstacle < 100 cm warning, < 50 cm critical |
+| `overheat` | engine temp > 100 °C warning, > 110 °C critical |
+| `unsafe_tilt` | abs(slope) > 25° → critical |
+| `engine_fault` | ML fault ≠ normal with ≥ 60% confidence (critical for overheating / low oil) |
+| `overspeed` | speed > 1.25 × ML advised speed + 1 → warning |
+| `idling` | engine on, stationary > `IDLE_ALERT_SEC` (demo 45 s, real 300 s) → warning |
+| `anomaly` | usage-window anomaly model flags the last window → warning |
+| `drowsy` / `camera_person` | camera events → critical / warning |
 
-Alert `type` values: `seatbelt`, `proximity`, `overheat`, `drowsy`, `engine_fault`, `idling`, `unsafe_tilt`, `anomaly`.
+Usage windows last `WINDOW_SEC` (demo 60 s, real 900 s) and are scaled to 15 minutes before scoring.
 
-Dashboard → gateway: `drowsy` event `{ "machineId", "confidence" }` (from Teachable Machine webcam).
+## 4. REST
 
-## 5. REST for dashboard
-- `GET /api/tasks?operatorId=OP-01&date=2026-09-23` → tasks with `predictedMinutes`
-- `PATCH /api/tasks/:id` `{ "status": "done" }`
-- `GET /api/incidents?machineId=EXC-001`
-- `GET /api/training/modules`, `POST /api/training/progress`, `POST /api/training/bookings`
-- `GET /api/operators/:id/score` → safety score
+| method | path | notes |
+|---|---|---|
+| GET | `/api/machines` | fleet with live state |
+| GET | `/api/machines/{id}/history` | last ~3 min of readings |
+| GET | `/api/alerts/active` | |
+| GET | `/api/operators`, `/api/operators/{id}`, `/api/operators/{id}/score` | safety score = 100 − 5·critical − 2·warning (7 days) + 3·modules passed |
+| GET | `/api/tasks?machineId=&operatorId=&day=YYYY-MM-DD` | today by default; includes `predicted_minutes`, `predicted_low`, `predicted_high` |
+| PATCH | `/api/tasks/{id}` | `{ "status": "pending" \| "in_progress" \| "done" }`; done records `actual_minutes` |
+| GET | `/api/incidents?machineId=&operatorId=&type=&severity=&limit=` | newest first, with sensor `snapshot` |
+| GET | `/api/insights/windows?machineId=&limit=` | past usage windows |
+| GET | `/api/training/modules?operatorId=` | modules (no answers), `bestScore`, `recommended`, `instructors` |
+| POST | `/api/training/progress` | `{ operatorId, moduleId, answers: [int] }` → `{ score, passed }` |
+| GET/POST | `/api/training/bookings` | `{ operatorId, instructor, slot, topic }` |
+| GET | `/health`, `/models` | status, model metrics |
 
-## 6. Alert thresholds (gateway rules)
-- seatbelt: `engineOn && !seatbelt` for > 5 s → critical
-- proximity: `< 100 cm` warning, `< 50 cm` critical
-- overheat: `> 100 °C` warning, `> 110 °C` critical
-- idling: `engineOn` and speed ~0 for > 5 min → warning
-- unsafe_tilt: `|slopeDeg| > 25` → critical
+## 5. ML endpoints (also used internally)
+
+camelCase JSON, only **bold** fields required. Bad enum values → 422.
+
+- `POST /predict/speed` **slopeDeg**, machineType, accel, gyro, vibration, loadPct, surface → `{ speedKmh, slopeDeg, advisory }`
+- `POST /predict/fault` **engineTempC, vibration**, oilPressurePsi, rpm, humidity, engineHours, obstacleCm → `{ fault, prob, probabilities }`
+- `POST /predict/task-time` **taskType**, machineId, machineType, operatorId, operatorExperienceYrs, volumeM3, soilType, slopeDeg, tempC, weather, timeOfDay → `{ minutes, low, high, operatorExperienceYrs }`
+- `POST /predict/anomaly` **idleMin**, fuelUsedL, loadCycles, avgRpm, maxTiltDeg, harshEvents, overspeedEvents, seatbeltOffSec, proximityAlerts → `{ anomaly, reason, reasons, score }`
+
+Enums: machineType excavator | loader | dozer · surface asphalt | gravel | sand | mud · taskType trenching | digging | loading | backfilling | hauling | grading · soilType sand | gravel | clay | rock · weather clear | dust | fog | rain · timeOfDay morning | afternoon | night.

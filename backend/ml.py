@@ -1,21 +1,17 @@
-"""FastAPI service serving the Smart Operator Assistant ML models.
+"""ML models: loading, request/response schemas and the /predict/* routes.
 
-Run from ml-service/:
-    uvicorn main:app --reload --port 8000
-
-Docs at http://localhost:8000/docs. Request/response formats: docs/CONTRACT.md section 3.
+The predict_* functions are also called directly by the telemetry pipeline.
+Request/response formats: docs/CONTRACT.md section 3.
 """
 
 import math
-from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Dict, List, Literal, Optional
 
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
@@ -33,14 +29,7 @@ def load_models() -> None:
         MODELS[n] = joblib.load(train.MODEL_DIR / f"{n}.joblib")
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    load_models()
-    yield
-
-
-app = FastAPI(title="CAT Operator Assistant ML", version="1.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+router = APIRouter(prefix="/predict", tags=["ml"])
 
 
 class CamelModel(BaseModel):
@@ -71,7 +60,7 @@ class SpeedResponse(CamelModel):
     advisory: str
 
 
-@app.post("/predict/speed", response_model=SpeedResponse, response_model_by_alias=True)
+@router.post("/speed", response_model=SpeedResponse, response_model_by_alias=True)
 def predict_speed(req: SpeedRequest):
     rad = math.radians(req.slope_deg)
     accel = req.accel or Vec3(x=9.81 * math.sin(rad), z=9.81 * math.cos(rad))
@@ -115,7 +104,7 @@ class FaultResponse(CamelModel):
     probabilities: Dict[str, float]
 
 
-@app.post("/predict/fault", response_model=FaultResponse, response_model_by_alias=True)
+@router.post("/fault", response_model=FaultResponse, response_model_by_alias=True)
 def predict_fault(req: FaultRequest):
     bundle = MODELS["fault"]
     row = pd.DataFrame([{
@@ -161,7 +150,7 @@ def _time_of_day() -> str:
     return "morning" if 5 <= h < 12 else "afternoon" if 12 <= h < 19 else "night"
 
 
-@app.post("/predict/task-time", response_model=TaskTimeResponse, response_model_by_alias=True)
+@router.post("/task-time", response_model=TaskTimeResponse, response_model_by_alias=True)
 def predict_task_time(req: TaskTimeRequest):
     b = MODELS["task_time"]
     exp = req.operator_experience_yrs
@@ -219,7 +208,7 @@ def _rule_reasons(r: AnomalyRequest) -> List[str]:
     return reasons
 
 
-@app.post("/predict/anomaly", response_model=AnomalyResponse, response_model_by_alias=True)
+@router.post("/anomaly", response_model=AnomalyResponse, response_model_by_alias=True)
 def predict_anomaly(req: AnomalyRequest):
     b = MODELS["anomaly"]
     values = req.model_dump()
@@ -234,11 +223,5 @@ def predict_anomaly(req: AnomalyRequest):
 
 # ---------- meta ----------
 
-@app.get("/health")
-def health():
-    return {"ok": True, "models": sorted(MODELS)}
-
-
-@app.get("/models")
-def model_info():
+def model_info() -> Dict[str, dict]:
     return {name: b["metrics"] for name, b in MODELS.items()}
