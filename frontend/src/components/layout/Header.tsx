@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Icon from '../common/Icon'
 import { useAppStore } from '../../store/useAppStore'
 import { mockWeather, siteInfo } from '../../mock/site'
 
 export default function Header() {
+  const navigate = useNavigate()
   const operator = useAppStore((s) => s.operator)
+  const logout = useAppStore((s) => s.logout)
   const notifications = useAppStore((s) => s.notifications)
   const alerts = useAppStore((s) => s.alerts)
   const unread = notifications.filter((n) => !n.read).length
@@ -102,6 +105,16 @@ export default function Header() {
           <span className="hidden 2xl:inline font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
             OP-SEC LEVEL {operator.certificationTier}
           </span>
+          <button
+            onClick={() => {
+              logout()
+              navigate('/login')
+            }}
+            title="Log out"
+            className="p-2 rounded bg-surface-container-low text-on-surface-variant hover:text-error hover:bg-error-container transition-colors"
+          >
+            <Icon name="logout" className="text-[18px]" />
+          </button>
         </div>
       </div>
     </header>

@@ -41,7 +41,14 @@ export default function PreOpCheck() {
         <div className="xl:col-span-8 flex flex-col gap-space-md">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
             {checklist.map((item) => (
-              <SafetyChecklistItem key={item.id} item={item} />
+              <SafetyChecklistItem
+                key={item.id}
+                item={
+                  item.id === 'rfid'
+                    ? { ...item, description: `${operator.id} Verified`, value: `L-${operator.certificationTier} AUTH` }
+                    : item
+                }
+              />
             ))}
           </div>
         </div>

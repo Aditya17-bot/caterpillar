@@ -217,7 +217,7 @@ export function getScenarioEffect(key: ScenarioKey, machineId: string): Scenario
           surface: 'Dry Compacted Clay',
         },
         drowsiness: { state: 'drowsy', confidencePct: 91.2, earValue: 0.14, blinkRatePerMin: 38, headPitchDeg: -18.4 },
-        copilotMessage: 'Sarah, camera detected sustained blink duration over 2.1 seconds. Cab alert audio triggered. Site supervisor alerted. Please park in a safe pocket if fatigued.',
+        copilotMessage: 'Operator, camera detected sustained blink duration over 2.1 seconds. Cab alert audio triggered. Site supervisor alerted. Please park in a safe pocket if fatigued.',
         alert: {
           severity: 'critical',
           category: 'drowsiness',

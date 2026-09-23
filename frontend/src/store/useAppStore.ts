@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type {
   AlertItem,
   DrowsinessReading,
@@ -14,7 +15,7 @@ import type {
 } from '../types/domain'
 import { mockMachines } from '../mock/machines'
 import { mockSchedule } from '../mock/schedule'
-import { currentOperator, getOperatorById } from '../mock/operators'
+import { currentOperator } from '../mock/operators'
 import { mockIncidents, nextIncidentId } from '../mock/incidents'
 import { mockNotifications } from '../mock/notifications'
 import { mockTraining } from '../mock/training'
@@ -29,6 +30,10 @@ let idCounter = 1000
 const nextId = (prefix: string) => `${prefix}-${idCounter++}`
 
 interface AppState {
+  // Platform login (Convex-backed operator identity). Distinct from
+  // `authStatus` below, which represents machine-operation authorization
+  // (the existing RFID pre-op check) for whoever is currently logged in.
+  isAuthenticated: boolean
   operator: Operator
   authStatus: 'pending' | 'authorized' | 'denied'
   authDenialReason?: string
@@ -57,7 +62,9 @@ interface AppState {
   notifications: NotificationItem[]
   training: TrainingRecommendation[]
 
-  authenticateOperator: (asOperatorId?: string) => void
+  login: (operator: Operator) => void
+  logout: () => void
+  authenticateOperator: (forceDeny?: boolean) => void
   resetAuth: () => void
   selectTask: (taskId: string) => void
   selectMachine: (machineId: string) => void
@@ -76,8 +83,11 @@ function activeMachine(state: AppState): Machine {
   return state.machines.find((m) => m.id === state.selectedMachineId) ?? state.machines[0]
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  operator: currentOperator,
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      isAuthenticated: false,
+      operator: currentOperator,
   authStatus: 'pending',
   workflowStep: 'idle',
 
@@ -104,19 +114,41 @@ export const useAppStore = create<AppState>((set, get) => ({
   notifications: mockNotifications,
   training: mockTraining,
 
-  authenticateOperator: (asOperatorId) => {
-    const operator = asOperatorId ? (getOperatorById(asOperatorId) ?? get().operator) : currentOperator
+  login: (operator) => set({ operator, isAuthenticated: true }),
+
+  logout: () =>
+    set({
+      isAuthenticated: false,
+      operator: currentOperator,
+      authStatus: 'pending',
+      authDenialReason: undefined,
+      workflowStep: 'idle',
+    }),
+
+  // Machine-operation authorization (the existing RFID pre-op check) — runs
+  // against whichever operator is currently logged in, never swaps identity.
+  // `forceDeny` lets the demo show the "access denied" UI state on demand
+  // without pretending a different operator scanned a badge.
+  authenticateOperator: (forceDeny = false) => {
+    const operator = get().operator
     const machine = activeMachine(get())
+    if (forceDeny) {
+      set({
+        authStatus: 'denied',
+        authDenialReason: 'Badge read error — RFID signal could not be verified. Re-scan required.',
+        workflowStep: 'rfid',
+      })
+      return
+    }
     const result = authenticateRFID(operator, machine)
     set({
-      operator,
       authStatus: result.authorized ? 'authorized' : 'denied',
       authDenialReason: result.reasonDenied,
       workflowStep: result.authorized ? 'schedule' : 'rfid',
     })
   },
 
-  resetAuth: () => set({ operator: currentOperator, authStatus: 'pending', authDenialReason: undefined, workflowStep: 'rfid' }),
+  resetAuth: () => set({ authStatus: 'pending', authDenialReason: undefined, workflowStep: 'rfid' }),
 
   selectTask: (taskId) => set({ selectedTaskId: taskId, workflowStep: 'machine_select' }),
 
@@ -249,6 +281,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       operationRunning: false,
       alerts: [],
     }),
-}))
+    }),
+    {
+      name: 'cat-soa-session',
+      // Only the login identity survives a page reload; live simulation
+      // state (telemetry, alerts, incidents, workflow step) always starts
+      // fresh so a refresh can never leave the demo in a half-finished state.
+      partialize: (state) => ({ isAuthenticated: state.isAuthenticated, operator: state.operator }),
+    },
+  ),
+)
 
 export const selectActiveMachine = (state: AppState) => activeMachine(state)
