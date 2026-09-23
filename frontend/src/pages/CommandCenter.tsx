@@ -3,33 +3,244 @@ import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
 import PageHeader from '../components/common/PageHeader'
 import EmptyState from '../components/common/EmptyState'
+import { getTaskTimePrediction } from '../services/predictionService'
 import ProgressBar from '../components/common/ProgressBar'
 import { useAppStore, selectActiveMachine } from '../store/useAppStore'
 
 export default function CommandCenter() {
-  const operator = useAppStore(s => s.operator)
+  const operator = useAppStore((s) => s.operator)
   const machine = useAppStore(selectActiveMachine)
-  const alerts = useAppStore(s => s.alerts)
-  const allTasks = useAppStore(s => s.tasks)
-  const backendOnline = useAppStore(s => s.backendOnline)
-  const copilotMessage = useAppStore(s => s.copilotMessage)
-  const tasks = allTasks.filter(t => !t.assignedMachineId || t.assignedMachineId === machine.id)
-  const openAlerts = alerts.filter(a => !a.resolved && (!a.machineId || a.machineId === machine.id))
-  const critical = openAlerts.filter(a => a.severity === 'critical').length
-  const completed = tasks.filter(t => t.status === 'completed').length
-  return <div className="p-4 lg:p-7 space-y-6">
-    <PageHeader eyebrow="Command center / Start of shift" title={`Ready for the day, ${operator.name.split(' ')[0]}?`} description="Your machine, your plan, and the checks that get you home safely." action={<Link to="/operation/rfid" className="btn-primary">Start shift → RFID</Link>} />
-    <section className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4">
-      <SectionCard className="relative overflow-hidden !bg-[#192431]"><div className="absolute right-[-20px] bottom-[-35px] opacity-[.05] pointer-events-none"><Icon name="precision_manufacturing" className="text-[230px]" /></div><p className="eyebrow text-primary mb-6">Operator briefing</p><div className="flex items-center gap-4"><div className="w-16 h-16 bg-primary/10 border border-primary/30 rounded-xl grid place-items-center font-bold text-2xl text-primary">{operator.photoInitials}</div><div><h2 className="text-2xl font-bold">{operator.name}</h2><p className="text-on-surface-variant text-sm mt-1">{operator.siteRole}</p></div></div><div className="grid grid-cols-3 gap-3 mt-7 pt-5 border-t border-surface-variant"><div><p className="eyebrow">Operator ID</p><p className="font-semibold mt-2">{operator.id}</p></div><div><p className="eyebrow">Certification</p><p className="font-semibold mt-2">Tier {operator.certificationTier}</p></div><div><p className="eyebrow">Experience</p><p className="font-semibold mt-2">{operator.experienceYears} years</p></div></div></SectionCard>
-      <SectionCard><p className="eyebrow mb-5">Safety posture · {machine.id}</p><div className="flex items-center gap-3"><Icon name={openAlerts.length ? 'warning' : 'verified_user'} className={`text-4xl ${critical ? 'text-error' : openAlerts.length ? 'text-primary' : 'text-tertiary'}`} /><h2 className="text-2xl font-bold">{critical ? `${critical} critical alert${critical > 1 ? 's' : ''}` : openAlerts.length ? 'Attention needed' : 'No active alerts'}</h2></div><p className="text-on-surface-variant leading-relaxed text-sm mt-4">{openAlerts.length ? `${openAlerts.length} active alert(s). Review hazards before operating.` : 'Complete your pre-start inspection and confirm conditions before operating.'}</p><Link to="/safety" className="inline-flex items-center gap-2 text-primary font-semibold text-sm mt-6">Review safety checks <Icon name="arrow_forward" className="text-lg" /></Link></SectionCard>
-    </section>
-    <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-5">
-      <SectionCard><div className="flex items-center justify-between mb-6"><div><p className="eyebrow mb-1">Today's plan</p><h2 className="text-xl font-bold">Shift timeline</h2></div><span className="text-sm text-on-surface-variant">{completed}/{tasks.length} complete</span></div>
-        {tasks.length ? <ol className="space-y-1">{tasks.map((t, i) => <li key={t.id} className="flex gap-4"><div className="flex flex-col items-center"><span className={`w-8 h-8 rounded-full grid place-items-center border text-xs font-bold ${t.status === 'completed' ? 'border-tertiary text-tertiary' : t.status === 'active' ? 'border-primary bg-primary text-on-primary' : 'border-surface-variant text-on-surface-variant'}`}>{t.status === 'completed' ? <Icon name="check" className="text-base" /> : String(i + 1).padStart(2, '0')}</span>{i < tasks.length - 1 && <span className="w-px flex-1 bg-surface-variant my-1" />}</div><div className="flex-1 pb-6"><div className="flex flex-wrap justify-between gap-2"><span className="text-xs text-on-surface-variant instrument-value">{t.startTime}–{t.endTime}</span><span className={`text-xs font-semibold ${t.status === 'active' ? 'text-primary' : 'text-on-surface-variant'}`}>{t.status === 'active' ? 'In progress' : t.status === 'completed' ? 'Completed' : 'Upcoming'}</span></div><h3 className="font-semibold mt-2">{t.title}</h3><p className="text-xs text-on-surface-variant mt-2">{t.volumeM3} m³ · {t.soilType} · {t.location}</p>{t.predictedMin != null && <p className="text-xs text-primary mt-2 flex items-center gap-1"><Icon name="auto_awesome" className="text-base" />AI estimate {Math.round(t.predictedMin)} min{t.predictedLow != null && t.predictedHigh != null ? ` · range ${Math.round(t.predictedLow)}–${Math.round(t.predictedHigh)} min` : ''}</p>}</div></li>)}</ol> : <EmptyState title="No tasks assigned" description="Tasks will appear here when a schedule is assigned to this machine." icon="event_available" />}
-        <Link to="/schedule" className="btn-secondary w-full">View schedule & machine assignment <Icon name="arrow_forward" className="text-lg" /></Link>
-      </SectionCard>
-      <div className="space-y-5"><SectionCard><div className="flex items-center justify-between"><div><p className="eyebrow mb-1">Selected machine</p><h2 className="text-xl font-bold">{machine.id}</h2></div><Icon name="precision_manufacturing" className="text-4xl text-primary" /></div><p className="text-sm text-on-surface-variant mt-2">{machine.model} · {machine.status.replace('_', ' ')}</p><div className="mt-6"><div className="flex justify-between text-sm mb-2"><span>Machine health</span><span className="instrument-value font-bold">{machine.telemetry.healthScore}/100</span></div><ProgressBar pct={machine.telemetry.healthScore} token={machine.telemetry.healthScore < 60 ? 'error' : 'tertiary'} /></div><div className="grid grid-cols-3 gap-4 my-6">{[['Fuel', `${Math.round(machine.telemetry.fuelPct)}%`], ['Engine', `${Math.round(machine.telemetry.engineTempC)}°C`], ['Service in', `${machine.serviceDueHours} h`]].map(([label, value]) => <div key={label}><p className="eyebrow">{label}</p><p className="instrument-value text-xl mt-2">{value}</p></div>)}</div><Link to="/machine-health" className="text-primary font-semibold text-sm">View machine health →</Link></SectionCard>
-      <SectionCard><div className="flex items-center gap-2 mb-3"><Icon name="graphic_eq" className="text-primary text-xl" /><h2 className="font-semibold">Co-pilot briefing</h2></div><p className="text-sm text-on-surface-variant leading-relaxed">{copilotMessage}</p><p className="eyebrow mt-5">{backendOnline ? 'Based on live telemetry' : 'Demo briefing · sample telemetry'}</p></SectionCard></div>
+  const alerts = useAppStore((s) => s.alerts)
+  const allTasks = useAppStore((s) => s.tasks)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const copilotMessage = useAppStore((s) => s.copilotMessage)
+  const tasks = allTasks.filter(
+    (t) => !t.assignedMachineId || t.assignedMachineId === machine.id,
+  )
+  const openAlerts = alerts.filter(
+    (a) => !a.resolved && (!a.machineId || a.machineId === machine.id),
+  )
+  const critical = openAlerts.filter((a) => a.severity === 'critical').length
+  const completed = tasks.filter((t) => t.status === 'completed').length
+  return (
+    <div className="p-4 lg:p-7 space-y-6">
+      <PageHeader
+        eyebrow="Command center / Start of shift"
+        title={`Ready for the day, ${operator.name.split(' ')[0]}?`}
+        description="Your machine, your plan, and the checks that get you home safely."
+        action={
+          <Link to="/operation/rfid" className="btn-primary">
+            Start shift → RFID
+          </Link>
+        }
+      />
+      <section className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4">
+        <SectionCard className="relative overflow-hidden !bg-[#192431]">
+          <div className="absolute right-[-20px] bottom-[-35px] opacity-[.05] pointer-events-none">
+            <Icon name="precision_manufacturing" className="text-[230px]" />
+          </div>
+          <p className="eyebrow text-primary mb-6">Operator briefing</p>
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-primary/10 border border-primary/30 rounded-xl grid place-items-center font-bold text-2xl text-primary">
+              {operator.photoInitials}
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold">{operator.name}</h2>
+              <p className="text-on-surface-variant text-sm mt-1">
+                {operator.siteRole}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mt-7 pt-5 border-t border-surface-variant">
+            <div>
+              <p className="eyebrow">Operator ID</p>
+              <p className="font-semibold mt-2">{operator.id}</p>
+            </div>
+            <div>
+              <p className="eyebrow">Certification</p>
+              <p className="font-semibold mt-2">
+                Tier {operator.certificationTier}
+              </p>
+            </div>
+            <div>
+              <p className="eyebrow">Experience</p>
+              <p className="font-semibold mt-2">
+                {operator.experienceYears} years
+              </p>
+            </div>
+          </div>
+        </SectionCard>
+        <SectionCard>
+          <p className="eyebrow mb-5">Safety posture · {machine.id}</p>
+          <div className="flex items-center gap-3">
+            <Icon
+              name={openAlerts.length ? 'warning' : 'verified_user'}
+              className={`text-4xl ${critical ? 'text-error' : openAlerts.length ? 'text-primary' : 'text-tertiary'}`}
+            />
+            <h2 className="text-2xl font-bold">
+              {critical
+                ? `${critical} critical alert${critical > 1 ? 's' : ''}`
+                : openAlerts.length
+                  ? 'Attention needed'
+                  : 'No active alerts'}
+            </h2>
+          </div>
+          <p className="text-on-surface-variant leading-relaxed text-sm mt-4">
+            {openAlerts.length
+              ? `${openAlerts.length} active alert(s). Review hazards before operating.`
+              : 'Complete your pre-start inspection and confirm conditions before operating.'}
+          </p>
+          <Link
+            to="/safety"
+            className="inline-flex items-center gap-2 text-primary font-semibold text-sm mt-6"
+          >
+            Review safety checks{' '}
+            <Icon name="arrow_forward" className="text-lg" />
+          </Link>
+        </SectionCard>
+      </section>
+      <div className="grid grid-cols-1 xl:grid-cols-[1.4fr_1fr] gap-5">
+        <SectionCard>
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <p className="eyebrow mb-1">Today's plan</p>
+              <h2 className="text-xl font-bold">Shift timeline</h2>
+            </div>
+            <span className="text-sm text-on-surface-variant">
+              {completed}/{tasks.length} complete
+            </span>
+          </div>
+          {tasks.length ? (
+            <ol className="space-y-1">
+              {tasks.map((t, i) => (
+                <li key={t.id} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <span
+                      className={`w-8 h-8 rounded-full grid place-items-center border text-xs font-bold ${t.status === 'completed' ? 'border-tertiary text-tertiary' : t.status === 'active' ? 'border-primary bg-primary text-on-primary' : 'border-surface-variant text-on-surface-variant'}`}
+                    >
+                      {t.status === 'completed' ? (
+                        <Icon name="check" className="text-base" />
+                      ) : (
+                        String(i + 1).padStart(2, '0')
+                      )}
+                    </span>
+                    {i < tasks.length - 1 && (
+                      <span className="w-px flex-1 bg-surface-variant my-1" />
+                    )}
+                  </div>
+                  <div className="flex-1 pb-6">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <span className="text-xs text-on-surface-variant instrument-value">
+                        {t.startTime}–{t.endTime}
+                      </span>
+                      <span
+                        className={`text-xs font-semibold ${t.status === 'active' ? 'text-primary' : 'text-on-surface-variant'}`}
+                      >
+                        {t.status === 'active'
+                          ? 'In progress'
+                          : t.status === 'completed'
+                            ? 'Completed'
+                            : 'Upcoming'}
+                      </span>
+                    </div>
+                    <h3 className="font-semibold mt-2">{t.title}</h3>
+                    <p className="text-xs text-on-surface-variant mt-2">
+                      {t.volumeM3} m³ · {t.soilType} · {t.location}
+                    </p>
+                    {
+                      <p className="text-xs text-primary mt-2 flex items-center gap-1">
+                        <Icon name="auto_awesome" className="text-base" />
+                        AI estimate{' '}
+                        {Math.round(
+                          t.predictedMin ??
+                            getTaskTimePrediction(t).aiEstimateMin,
+                        )}{' '}
+                        min
+                        {t.predictedLow != null && t.predictedHigh != null
+                          ? ` · range ${Math.round(t.predictedLow)}–${Math.round(t.predictedHigh)} min`
+                          : ''}
+                      </p>
+                    }
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <EmptyState
+              title="No tasks assigned"
+              description="Tasks will appear here when a schedule is assigned to this machine."
+              icon="event_available"
+            />
+          )}
+          <Link to="/schedule" className="btn-secondary w-full">
+            View schedule & machine assignment{' '}
+            <Icon name="arrow_forward" className="text-lg" />
+          </Link>
+        </SectionCard>
+        <div className="space-y-5">
+          <SectionCard>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="eyebrow mb-1">Selected machine</p>
+                <h2 className="text-xl font-bold">{machine.id}</h2>
+              </div>
+              <Icon
+                name="precision_manufacturing"
+                className="text-4xl text-primary"
+              />
+            </div>
+            <p className="text-sm text-on-surface-variant mt-2">
+              {machine.model} · {machine.status.replace('_', ' ')}
+            </p>
+            <div className="mt-6">
+              <div className="flex justify-between text-sm mb-2">
+                <span>Machine health</span>
+                <span className="instrument-value font-bold">
+                  {machine.telemetry.healthScore}/100
+                </span>
+              </div>
+              <ProgressBar
+                pct={machine.telemetry.healthScore}
+                token={
+                  machine.telemetry.healthScore < 60 ? 'error' : 'tertiary'
+                }
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-4 my-6">
+              {[
+                ['Fuel', `${Math.round(machine.telemetry.fuelPct)}%`],
+                ['Engine', `${Math.round(machine.telemetry.engineTempC)}°C`],
+                ['Service in', `${machine.serviceDueHours} h`],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <p className="eyebrow">{label}</p>
+                  <p className="instrument-value text-xl mt-2">{value}</p>
+                </div>
+              ))}
+            </div>
+            <Link
+              to="/machine-health"
+              className="text-primary font-semibold text-sm"
+            >
+              View machine health →
+            </Link>
+          </SectionCard>
+          <SectionCard>
+            <div className="flex items-center gap-2 mb-3">
+              <Icon name="graphic_eq" className="text-primary text-xl" />
+              <h2 className="font-semibold">Co-pilot briefing</h2>
+            </div>
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              {copilotMessage}
+            </p>
+            <p className="eyebrow mt-5">
+              {backendOnline
+                ? 'Based on live telemetry'
+                : 'Demo briefing · sample telemetry'}
+            </p>
+          </SectionCard>
+        </div>
+      </div>
     </div>
-  </div>
+  )
 }
