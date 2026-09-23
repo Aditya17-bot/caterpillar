@@ -23,6 +23,7 @@ Change a format only after telling the team; the simulator, backend and dashboar
 - `rfid` present = operator logged in (looked up in the operators table); `null` = logged out.
 - `loadCycle`: true on the tick a bucket cycle completes. `harshEvent`: sudden jolt this tick.
 - `phase`, `scenarios`: simulator-only debug info, shown on the Simulator page.
+- `posX`, `posY` (metres, x east / y north), `heading` (degrees from north), `elevation`: machine position on the site.
 
 Response: `{ "ok": true, "commands": [ { "command": "overheat", "field": null, "value": null } ] }`.
 Commands are queued with `POST /api/sim/command` (dashboard Simulator page).
@@ -65,7 +66,12 @@ Alert types and rules (in `backend/engine.py`):
 | `idling` | engine on, stationary > `IDLE_ALERT_SEC` (demo 45 s, real 300 s) → warning |
 | `anomaly` | usage-window anomaly model flags the last window → warning |
 | `drowsy` / `camera_person` | camera events → critical / warning |
-| `overheat_predicted` | linear trend of last ~30 s reaches 110 °C within 3 min → warning (`predictions.overheatEtaSec`) |
+| `geofence` | inside a zone: no_go → critical, caution → warning |
+| `machine_proximity` | another machine < 20 m warning, < 10 m critical |
+| `no_inspection` | engine running > 30 s after login without the pre-start inspection |
+| `lockout` | critical defect in the inspection; engine stopped by command |
+| `sos` / `sos_nearby` | SOS raised (manual, voice, rollover > 35°, breakdown) / machine within 300 m |
+| `overheat_predicted` | first-order (levelling-off) fit of the last ~40 s reaches 110 °C within 3 min → warning (`predictions.overheatEtaSec`); normal warm-up does not trigger it |
 
 Usage windows last `WINDOW_SEC` (demo 60 s, real 900 s) and are scaled to 15 minutes before scoring.
 
@@ -92,6 +98,16 @@ Usage windows last `WINDOW_SEC` (demo 60 s, real 900 s) and are scaled to 15 min
 | POST | `/api/training/sim-result` | `{ operatorId, score, avgReactionMs, hazards, missed }` (stored as module `hazard-sim`) |
 | GET | `/api/impact` | fleet fuel/idle/CO₂/cost numbers + yearly projection |
 | GET | `/api/leaderboard` | operators by safety score, with hazard-sim best |
+| GET | `/api/site` | terrain grid (`heights[ny][nx]`, `step` m), `zones` (polygons, `kind` no_go/caution), machine `start` positions |
+| GET | `/api/incidents/{id}` | incident with `blackbox`: `{ incidentTs, readings[], events[], complete }` |
+| GET | `/api/inspection/items` | checklist items (`critical` items lock the machine out) |
+| POST | `/api/inspection` | `{ machineId, operatorId, items: [{id, ok, note}], photo }` → `{ passed, failed, lockout }` |
+| POST | `/api/inspection/{machineId}/clear-lockout` | maintenance released the machine |
+| GET/POST | `/api/maintenance` | `{ machineId, issue, priority: normal \| urgent, slot, notes }` |
+| PATCH | `/api/maintenance/{id}` | `{ status: requested \| scheduled \| in_progress \| done, slot }` |
+| POST | `/api/sos` | `{ machineId, reason }` → SOS with `nearby: [{machineId, operator, distanceM, direction}]` |
+| POST | `/api/sos/{id}/respond`, `/api/sos/{id}/resolve` | `{ machineId }` / `{}` |
+| GET | `/api/sos?status=active` | |
 | GET | `/health`, `/models` | status, model metrics |
 
 ## 5. ML endpoints (also used internally)

@@ -75,6 +75,12 @@ API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python see
 | Hazard response simulator | 60 s training drill (worker, seatbelt, slope, overheat) scored on reaction time, feeds the safety score |
 | Supervisor view | Fleet table, operator safety ranking, business impact (idle fuel cost, CO₂, yearly saving if idling halved) |
 | Machine view | Live tilt drawing of the machine and a proximity radar |
+| Site map | Game-style top-down map: shaded terrain with contours or slope-danger colours, danger zones (pit edge, pedestrian area, power line, gas pipe), every machine with heading, trail and label, proximity rings, minimap, hover for elevation/slope. Machines drive over the real terrain, so the slope sensor matches the map |
+| Geofence + machine proximity | Alerts when a machine enters a zone or comes within 20 m / 10 m of another machine |
+| SOS | Button, voice ("SOS", "help me") or automatic on rollover (> 35°) or breakdown. Every machine within 300 m gets distance + direction and can respond; shown live on the map |
+| Pre-start inspection | Daily walk-around checklist with defect photo; critical defects lock the machine out (engine interlock) and open an urgent maintenance request |
+| Maintenance booking | Book service, suggested from the ML fault model; status flow requested → scheduled → in progress → done |
+| Incident black box | Every incident records 60 s before / 30 s after: readings, alert timeline, machine path; replay with a scrubber |
 
 Model metrics: `backend/RESULTS.md`.
 

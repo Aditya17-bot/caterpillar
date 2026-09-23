@@ -318,7 +318,7 @@ async def run_rules(ms: MachineState, t: Dict, now: float) -> None:
         sev = "critical" if fault in ("overheating", "low_oil_pressure") else "warning"
         await level(ms, "engine_fault", sev,
                     f"ML predicts {fault.replace('_', ' ')} ({prob:.0%} confidence)")
-    elif fault == "normal":
+    elif fault in ("normal", None):
         await level(ms, "engine_fault", None)
 
     speed, optimal = t.get("speedKmh", 0), ms.predictions.get("optimalSpeedKmh")
@@ -584,9 +584,11 @@ async def ingest(t: Dict) -> Dict:
         op = await run_in_threadpool(db.one, "SELECT * FROM operators WHERE rfid = ?", [rfid])
         if op:
             op["certified"] = json.loads(op["certified"] or "[]")
+            reconnect = ms.last_seen == 0     # server restarted mid-shift: keep inspection status
             ms.operator = op
             start_shift(ms, op["id"])
-            ms.inspection = {"status": "pending", "operatorId": op["id"]}
+            if not reconnect:
+                ms.inspection = {"status": "pending", "operatorId": op["id"]}
             await hub.send("login", {"machineId": ms.machine_id, "operator": op})
     elif not rfid and ms.operator:
         ms.operator = None
@@ -600,7 +602,9 @@ async def ingest(t: Dict) -> Dict:
     ms.predictions["optimalSpeedKmh"] = speed.speed_kmh
     ms.predictions["advisory"] = speed.advisory
 
-    if now - ms.last_fault_at >= FAULT_EVERY_SEC:
+    if not t.get("engineOn", True):
+        ms.predictions["fault"], ms.predictions["faultProb"] = None, None   # cold readings mislead the model
+    elif now - ms.last_fault_at >= FAULT_EVERY_SEC:
         ms.last_fault_at = now
         fault = await run_in_threadpool(ml.predict_fault, ml.FaultRequest(
             engine_temp_c=t.get("engineTempC", 85), vibration=t.get("vibration", 0.3),

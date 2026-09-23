@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 WIDTH, HEIGHT = 400.0, 300.0
 BASE_ELEVATION = 100.0
-GRID_STEP = 5.0     # metres between grid samples sent to clients
+GRID_STEP = 2.5     # metres between grid samples sent to clients
 
 # (x, y, height m, spread m): gaussian hills; negative height = pit
 HILLS = [
