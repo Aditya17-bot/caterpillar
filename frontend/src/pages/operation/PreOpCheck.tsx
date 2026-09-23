@@ -6,6 +6,10 @@ import SafetyChecklistItem from '../../components/domain/SafetyChecklistItem'
 import AIInsightPanel from '../../components/domain/AIInsightPanel'
 import { useAppStore, selectActiveMachine } from '../../store/useAppStore'
 import { getTaskTimePrediction } from '../../services/predictionService'
+import { useLiveData } from '../../services/useBackendSync'
+import InspectionJsx from '../../legacy/Inspection.jsx'
+
+const Inspection = InspectionJsx as any
 
 export default function PreOpCheck() {
   const navigate = useNavigate()
@@ -14,9 +18,16 @@ export default function PreOpCheck() {
   const activeTask = useAppStore((s) => s.tasks.find((t) => t.id === s.selectedTaskId))
   const checklist = useAppStore((s) => s.preOpChecklist)
   const startOperation = useAppStore((s) => s.startOperation)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const live = useLiveData()
   const passCount = checklist.filter((c) => c.state === 'pass').length
-  const allPass = passCount === checklist.length
-  const prediction = getTaskTimePrediction(activeTask?.id ?? 'TSK-8821')
+  const inspection = machine.inspectionStatus
+  // live: the walk-around must be done and nothing may be failing; warnings are allowed
+  const allPass = backendOnline
+    ? inspection !== 'pending' && inspection !== 'locked' && !checklist.some((c) => c.state === 'fail')
+    : passCount === checklist.length
+  const prediction = getTaskTimePrediction(activeTask)
+  const slope = Math.abs(machine.telemetry.slopeDeg)
 
   return (
     <div className="p-space-lg flex flex-col gap-space-lg">
@@ -44,18 +55,34 @@ export default function PreOpCheck() {
               <SafetyChecklistItem key={item.id} item={item} />
             ))}
           </div>
+          {backendOnline && inspection !== 'done' && (
+            <div className="legacy">
+              {inspection === 'locked' ? (
+                <div className="card">
+                  <h3>Machine locked out</h3>
+                  <p>A critical defect was reported. Maintenance must release the machine (Maintenance page).</p>
+                </div>
+              ) : (
+                <Inspection machineId={machine.id} machine={live?.machines?.[machine.id]} inline />
+              )}
+            </div>
+          )}
         </div>
 
         <div className="xl:col-span-4 flex flex-col gap-space-lg">
           <AIInsightPanel
             title="AI Pre-Flight Prediction Deck"
             modelBadge="MODEL V4.9"
-            reason="Neural model calibrated against historical cuts in this sector. Geological compaction factors folded into hydraulic duty cycle."
+            reason={
+              backendOnline
+                ? `Task-time Random Forest and speed model on live conditions: ${activeTask?.soilType ?? ''} soil, ${activeTask?.weather ?? 'clear'} weather, slope ${machine.telemetry.slopeDeg}°.`
+                : 'Neural model calibrated against historical cuts in this sector. Geological compaction factors folded into hydraulic duty cycle.'
+            }
             metrics={[
               { label: 'Est. Duration', value: `${prediction.aiEstimateMin} min`, token: 'primary' },
-              { label: 'Baseline', value: `${prediction.historicalAverageMin} min` },
-              { label: 'Rec. Speed', value: '18 km/h', token: 'secondary' },
-              { label: 'Slip Risk', value: 'LOW', token: 'tertiary' },
+              { label: 'Typical', value: `${prediction.historicalAverageMin} min` },
+              { label: 'Rec. Speed', value: backendOnline ? `${machine.telemetry.recommendedSpeedKmh} km/h` : '18 km/h', token: 'secondary' },
+              { label: 'Slip Risk', value: slope > 20 ? 'HIGH' : slope > 12 ? 'MEDIUM' : 'LOW', token: slope > 20 ? 'error' : slope > 12 ? 'primary' : 'tertiary' },
             ]}
           />
         </div>

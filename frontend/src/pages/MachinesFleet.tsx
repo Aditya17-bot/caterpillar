@@ -7,21 +7,30 @@ import AIInsightPanel from '../components/domain/AIInsightPanel'
 import { useAppStore } from '../store/useAppStore'
 import { getFaultDiagnosis } from '../services/predictionService'
 
-const subsystems = [
-  { label: 'Engine', value: 96 },
-  { label: 'Hydraulic Pump', value: 92 },
-  { label: 'Final Drive & Undercarriage', value: 85 },
-  { label: 'Electrical & Telematics', value: 98 },
-  { label: 'Swing Mechanism', value: 95 },
-]
+import type { Machine } from '../types/domain'
+
+// Subsystem integrity from live readings (engine temp/fault, hydraulics, vibration)
+function subsystemsFor(m: Machine) {
+  const t = m.telemetry
+  const clamp = (v: number) => Math.max(5, Math.min(100, Math.round(v)))
+  const faulty = m.ml?.fault && m.ml.fault !== 'normal'
+  return [
+    { label: 'Engine', value: clamp((faulty ? 100 - (m.ml?.faultProb ?? 0.6) * 60 : 98) - Math.max(0, t.engineTempC - 95) * 2) },
+    { label: 'Lubrication', value: clamp(t.oilPressurePsi && m.engineOn ? Math.min(100, (t.oilPressurePsi / 50) * 100) : 95) },
+    { label: 'Hydraulic Pump', value: clamp(t.hydraulicPressureBar ? 100 - Math.abs(t.hydraulicPressureBar - 320) / 2 : 95) },
+    { label: 'Final Drive & Undercarriage', value: clamp(100 - t.vibrationG * 25) },
+    { label: 'Electrical & Telematics', value: m.online === false ? 20 : 98 },
+  ]
+}
 
 export default function MachinesFleet() {
   const machines = useAppStore((s) => s.machines)
   const selectedMachineId = useAppStore((s) => s.selectedMachineId)
   const selectMachine = useAppStore((s) => s.selectMachine)
   const machine = machines.find((m) => m.id === selectedMachineId) ?? machines[0]
-  const diagnosis = getFaultDiagnosis(machine.id)
-  const online = machines.filter((m) => m.status === 'available' || m.status === 'in_use').length
+  const diagnosis = getFaultDiagnosis(machine)
+  const subsystems = subsystemsFor(machine)
+  const online = machines.filter((m) => m.online ?? (m.status === 'available' || m.status === 'in_use')).length
 
   return (
     <div className="flex flex-col w-full">
@@ -108,7 +117,7 @@ export default function MachinesFleet() {
           <div className="lg:col-span-3">
             <AIInsightPanel
               title="AI Predictive Fault Diagnostic"
-              modelBadge="ISOLATION FOREST"
+              modelBadge="RANDOM FOREST"
               reason={diagnosis.evidence}
               confidencePct={diagnosis.confidencePct}
               metrics={[

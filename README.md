@@ -30,11 +30,13 @@ uvicorn main:app --reload --port 8000
 pip install httpx
 python simulator/sim.py              # add --chaos 30 for random scenarios
 
-# 3. dashboard
-cd dashboard
+# 3. frontend (main UI)
+cd frontend
 npm install
 npm run dev                          # http://localhost:5173
 ```
+
+`frontend/` is the main UI (React + TypeScript + Tailwind). It streams live data from the backend and falls back to built-in demo data when the backend is down (header shows LIVE / DEMO DATA). `dashboard/` is the earlier plain UI, kept for reference (`npm run dev` there serves on 5175).
 
 API docs: http://localhost:8000/docs. Reset demo data: `cd backend && python seed.py`.
 

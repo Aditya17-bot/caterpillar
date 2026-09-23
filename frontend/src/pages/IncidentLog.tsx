@@ -1,10 +1,15 @@
 import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
 import StatusPill from '../components/common/StatusPill'
+import { useState } from 'react'
 import { useAppStore } from '../store/useAppStore'
+import BlackBoxJsx from '../legacy/BlackBox.jsx'
+
+const BlackBox = BlackBoxJsx as any
 
 export default function IncidentLog() {
   const incidents = useAppStore((s) => s.incidents)
+  const [replay, setReplay] = useState<number | null>(null)
 
   return (
     <div className="p-space-lg flex flex-col gap-space-lg">
@@ -52,11 +57,27 @@ export default function IncidentLog() {
                 <Icon name="task_alt" className="text-[15px]" />
                 {i.actionTaken}
               </span>
-              <span className="text-outline">{i.resolution}</span>
+              <span className="text-outline flex items-center gap-space-sm">
+                {i.resolution}
+                {i.hasBlackbox && i.backendId != null && (
+                  <button
+                    onClick={() => setReplay(i.backendId!)}
+                    className="px-space-md py-1 rounded bg-primary-container text-on-primary-container font-label-md text-label-sm uppercase font-bold flex items-center gap-1 hover:bg-primary"
+                  >
+                    <Icon name="play_circle" className="text-[16px]" />
+                    Black-box replay
+                  </button>
+                )}
+              </span>
             </div>
           </SectionCard>
         ))}
       </div>
+      {replay != null && (
+        <div className="legacy">
+          <BlackBox incidentId={replay} onClose={() => setReplay(null)} />
+        </div>
+      )}
     </div>
   )
 }

@@ -361,5 +361,8 @@ export function getScenarioEffect(key: ScenarioKey, machineId: string): Scenario
           actionTaken: 'AI enforced emergency speed derate to 10 km/h.',
         },
       }
+    default:
+      // live-only scenarios (zone breach, SOS...) have no mock effect: fall back to normal readings
+      return { ...getScenarioEffect('normal', machineId), key }
   }
 }

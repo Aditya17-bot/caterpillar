@@ -12,6 +12,12 @@ export default function SafetyCenter() {
   const drowsiness = useAppStore((s) => s.drowsiness)
   const incidents = useAppStore((s) => s.incidents)
   const passCount = interlocks.filter((i) => i.state === 'pass').length
+  const machines = useAppStore((s) => s.machines)
+  const siteSafety = useAppStore((s) => s.siteSafetyScore)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const onDuty = machines.filter((m) => m.currentOperatorId).length
+  const belted = machines.filter((m) => m.currentOperatorId && m.seatbelt !== false).length
+  const lockouts = machines.filter((m) => m.inspectionStatus === 'locked').length
 
   return (
     <div className="flex flex-col w-full text-on-surface">
@@ -27,12 +33,12 @@ export default function SafetyCenter() {
 
       <div className="p-space-lg lg:p-margin-lg flex flex-col gap-space-lg">
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-space-md">
-          <KPICard label="Site Safety Score" value={98.4} unit="/100" icon="verified_user" token="tertiary" sub="184d Clean Run" />
-          <KPICard label="Active On-Duty" value={18} unit="OPS" icon="badge" token="secondary" sub="100% RFID Validated" />
-          <KPICard label="Seatbelt Status" value="100%" icon="airline_seat_recline_extra" token="tertiary" sub="18/18 Interlocked" />
+          <KPICard label="Site Safety Score" value={siteSafety ?? 98.4} unit="/100" icon="verified_user" token="tertiary" sub={backendOnline ? 'Avg operator score (7 days)' : '184d Clean Run'} />
+          <KPICard label="Active On-Duty" value={backendOnline ? onDuty : 18} unit="OPS" icon="badge" token="secondary" sub="100% RFID Validated" />
+          <KPICard label="Seatbelt Status" value={backendOnline ? `${onDuty ? Math.round((100 * belted) / onDuty) : 100}%` : '100%'} icon="airline_seat_recline_extra" token={belted < onDuty ? 'error' : 'tertiary'} sub={backendOnline ? `${belted}/${onDuty} Interlocked` : '18/18 Interlocked'} />
           <KPICard label="Fatigue Monitor" value={drowsiness.state.toUpperCase()} icon="visibility" token={drowsiness.state === 'alert' ? 'tertiary' : 'error'} />
           <KPICard label="Collision Events" value={incidents.filter((i) => i.category === 'proximity').length} unit="AVERTED" icon="radar" token="secondary" />
-          <KPICard label="Active LOTO" value={0} unit="HOLDS" icon="lock_reset" token="tertiary" sub="Zero Active Lockouts" />
+          <KPICard label="Active LOTO" value={lockouts} unit="HOLDS" icon="lock_reset" token={lockouts ? 'error' : 'tertiary'} sub={lockouts ? 'Inspection lockout active' : 'Zero Active Lockouts'} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg">

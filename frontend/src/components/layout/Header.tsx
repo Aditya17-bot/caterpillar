@@ -1,9 +1,41 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { apiSend } from '../../services/backend'
 import Icon from '../common/Icon'
 import { useAppStore } from '../../store/useAppStore'
 import { mockWeather, siteInfo } from '../../mock/site'
 
+function SosButton({ machineId }: { machineId?: string }) {
+  const [armed, setArmed] = useState(false)
+  useEffect(() => {
+    if (!armed) return
+    const t = setTimeout(() => setArmed(false), 4000)
+    return () => clearTimeout(t)
+  }, [armed])
+  return (
+    <button
+      onClick={() => {
+        if (!armed) return setArmed(true)
+        setArmed(false)
+        if (machineId) apiSend('/api/sos', { machineId, reason: 'Operator pressed SOS' }).catch(() => undefined)
+      }}
+      title="Emergency: alerts supervisor and all machines within 300 m"
+      className={`flex items-center gap-1 px-space-md py-1.5 rounded font-headline-md text-label-md uppercase font-extrabold tracking-wider transition-colors ${
+        armed ? 'bg-on-surface text-error animate-pulse' : 'bg-error text-on-error hover:bg-error-container hover:text-error'
+      }`}
+    >
+      <Icon name="sos" className="text-[18px]" filled />
+      {armed ? 'Tap again to send' : 'SOS'}
+    </button>
+  )
+}
+
 export default function Header() {
+  const navigate = useNavigate()
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const machines = useAppStore((s) => s.machines)
+  const selectedMachineId = useAppStore((s) => s.selectedMachineId)
+  const selectMachine = useAppStore((s) => s.selectMachine)
   const operator = useAppStore((s) => s.operator)
   const notifications = useAppStore((s) => s.notifications)
   const alerts = useAppStore((s) => s.alerts)
@@ -43,14 +75,27 @@ export default function Header() {
         <div className="h-4 w-px bg-surface-variant" />
         <div className="flex items-center gap-1 px-2 py-0.5">
           <Icon name="precision_manufacturing" className="text-[15px] text-primary" />
+          <select
+            value={selectedMachineId}
+            onChange={(e) => selectMachine(e.target.value)}
+            className="bg-surface-container text-on-surface font-body-md text-[11px] font-semibold rounded px-1 py-0.5 border-none focus:ring-1 focus:ring-primary"
+          >
+            {machines.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </select>
           <span className="font-body-md text-[11px] text-on-surface font-semibold">
-            {machine?.id ?? '—'} • {machine ? machine.status.replace('_', ' ').toUpperCase() : '—'}
+            {machine ? machine.status.replace('_', ' ').toUpperCase() : '—'}
           </span>
         </div>
         <div className="h-4 w-px bg-surface-variant" />
-        <div className="flex items-center gap-1 px-2 py-0.5">
-          <Icon name="cell_tower" className="text-[15px] text-secondary" />
-          <span className="font-body-md text-[11px] text-on-surface">12ms 900MHz UHF</span>
+        <div className="flex items-center gap-1 px-2 py-0.5" title={backendOnline ? 'Streaming live telemetry from the backend' : 'Backend unreachable: showing demo data'}>
+          <Icon name={backendOnline ? 'cell_tower' : 'cloud_off'} className={`text-[15px] ${backendOnline ? 'text-tertiary' : 'text-error'}`} />
+          <span className={`font-body-md text-[11px] font-bold ${backendOnline ? 'text-tertiary' : 'text-error'}`}>
+            {backendOnline ? 'LIVE' : 'DEMO DATA'}
+          </span>
         </div>
         <div className="h-4 w-px bg-surface-variant" />
         <div className="flex items-center gap-1 px-2 py-0.5">
@@ -83,7 +128,11 @@ export default function Header() {
             {hasCriticalAlert ? 'Critical Alert // Review Required' : 'System Armed // Zero Lockouts'}
           </span>
         </div>
-        <button className="relative p-2 rounded bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors">
+        <SosButton machineId={selectedMachineId} />
+        <button
+          onClick={() => navigate('/notifications')}
+          className="relative p-2 rounded bg-surface-container-low text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors"
+        >
           <Icon name="notifications" className="text-[20px]" />
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 bg-error text-on-error font-label-sm text-label-sm px-1.5 py-0.2 rounded font-bold">
@@ -91,7 +140,10 @@ export default function Header() {
             </span>
           )}
         </button>
-        <button className="flex items-center gap-1.5 px-space-md py-1.5 bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-colors rounded font-headline-md text-label-md tracking-wider uppercase font-bold">
+        <button
+          onClick={() => window.dispatchEvent(new Event('copilot:toggle'))}
+          title="Voice co-pilot: ask about alerts, tasks, terrain, your shift"
+          className="flex items-center gap-1.5 px-space-md py-1.5 bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-colors rounded font-headline-md text-label-md tracking-wider uppercase font-bold">
           <Icon name="bolt" className="text-[18px]" />
           <span>Operator AI</span>
         </button>

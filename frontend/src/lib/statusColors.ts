@@ -31,7 +31,7 @@ export const machineStatusLabel: Record<MachineStatus, string> = {
   maintenance: 'In Maintenance',
   offline: 'Offline / Comms Lost',
   warning: 'Advisory',
-  critical: 'Critical Lockout',
+  critical: 'Critical Alert',
 }
 
 // Tailwind class bundles per token — pill / text / dot variants.

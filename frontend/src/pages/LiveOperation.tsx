@@ -11,6 +11,10 @@ import ScenarioTriggerDeck from '../components/domain/ScenarioTriggerDeck'
 import { useAppStore, selectActiveMachine } from '../store/useAppStore'
 import { formatHMS } from '../lib/format'
 import { getScenarioDefinition } from '../mock/scenarios'
+import { useLiveData } from '../services/useBackendSync'
+import SiteMapJsx from '../legacy/pages/SiteMap.jsx'
+
+const SiteMap = SiteMapJsx as any
 
 export default function LiveOperation() {
   const navigate = useNavigate()
@@ -31,13 +35,17 @@ export default function LiveOperation() {
   const resolveActiveEvent = useAppStore((s) => s.resolveActiveEvent)
   const startOperation = useAppStore((s) => s.startOperation)
   const completeTask = useAppStore((s) => s.completeTask)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const selectMachine = useAppStore((s) => s.selectMachine)
+  const live = useLiveData()
 
   useEffect(() => {
     if (!operationRunning) startOperation()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const openAlert = alerts.find((a) => !a.resolved)
+  const openAlert = alerts.find((a) => !a.resolved && (!backendOnline || a.machineId === machine.id))
+  const eta = machine.ml?.overheatEtaSec
   const scenarioDef = getScenarioDefinition(activeScenario)
   const speedExceeded = telemetry.speedKmh > speedRec.recommendedSpeedKmh + 2
 
@@ -104,8 +112,13 @@ export default function LiveOperation() {
                   Tactical LiDAR &amp; Site Viewport // {scenarioDef.label}
                 </span>
               </div>
-              <StatusPill label="LiDAR Active" token="primary" />
+              <StatusPill label={backendOnline ? 'Live Site Map' : 'LiDAR Active'} token="primary" />
             </div>
+            {backendOnline && live ? (
+              <div className="legacy">
+                <SiteMap live={live} machineId={machine.id} setMachineId={selectMachine} compact height={380} />
+              </div>
+            ) : (
             <div className="relative w-full h-[380px] bg-surface-container-lowest overflow-hidden rounded flex items-center justify-center">
               <svg className="absolute inset-0 w-full h-full opacity-40 text-secondary" viewBox="0 0 700 380">
                 <defs>
@@ -146,12 +159,19 @@ export default function LiveOperation() {
                 <span>SAT LOCK: 18 SVs</span>
               </div>
             </div>
+            )}
           </SectionCard>
 
           <div className="grid grid-cols-3 gap-1 bg-surface-container-low p-2 rounded">
             {['Blind Right', 'Trench Load', 'Cabin Cognitive'].map((label) => (
-              <div key={label} className="relative bg-surface-container-lowest h-24 rounded overflow-hidden flex items-center justify-center">
-                <Icon name="videocam" className="text-[28px] text-outline" />
+              <div
+                key={label}
+                onClick={() => navigate('/cameras')}
+                title="Open the camera AI (drowsiness + person detection)"
+                className="relative bg-surface-container-lowest h-24 rounded overflow-hidden flex flex-col items-center justify-center gap-1 cursor-pointer hover:bg-surface-container-high transition-colors"
+              >
+                <Icon name="videocam" className="text-[28px] text-primary" />
+                <span className="font-label-sm text-[10px] text-on-surface-variant uppercase">Open camera AI</span>
                 <div className="absolute top-1 left-2 flex items-center gap-1 bg-surface-container-high/90 px-1.5 py-0.2 rounded font-label-sm text-[9px] text-on-surface uppercase">
                   CAM // {label}
                 </div>
@@ -215,6 +235,20 @@ export default function LiveOperation() {
             <TelemetryStat label="Oil Pressure" value={`${telemetry.oilPressurePsi} PSI`} token={telemetry.oilPressurePsi < 20 ? 'error' : 'tertiary'} />
             <TelemetryStat label="Vibration" value={`${telemetry.vibrationG.toFixed(2)}G`} token={telemetry.vibrationG > 1.5 ? 'error' : 'tertiary'} />
             <TelemetryStat label="Fuel" value={`${Math.round(telemetry.fuelPct)}%`} />
+            {backendOnline && (
+              <>
+                <TelemetryStat
+                  label="Overheat Forecast"
+                  value={eta != null ? `${Math.floor(eta / 60)}:${String(eta % 60).padStart(2, '0')}` : 'STABLE'}
+                  token={eta != null ? 'error' : 'tertiary'}
+                />
+                <TelemetryStat
+                  label="AI Fault Model"
+                  value={machine.ml?.fault ? machine.ml.fault.replace(/_/g, ' ').toUpperCase() : 'ENGINE OFF'}
+                  token={machine.ml?.fault && machine.ml.fault !== 'normal' ? 'error' : 'tertiary'}
+                />
+              </>
+            )}
           </SectionCard>
 
           <SectionCard variant="lowest" className="flex flex-col gap-space-sm">

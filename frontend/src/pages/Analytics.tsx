@@ -14,7 +14,16 @@ export default function Analytics() {
   const activeTask = useAppStore((s) => s.tasks.find((t) => t.id === s.selectedTaskId))
   const workCompleted = useAppStore((s) => s.workCompletedM3)
   const [siteFilter] = useState('Sector 7 North Pit')
-  const prediction = getTaskTimePrediction(activeTask?.id ?? 'TSK-8821')
+  const prediction = getTaskTimePrediction(activeTask)
+  const shift = useAppStore((s) => s.shiftReport)
+  const siteSafety = useAppStore((s) => s.siteSafetyScore)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const st = shift?.stats
+  const utilization = machines.length ? (100 * machines.filter((m) => m.status === 'in_use' || m.engineOn).length) / machines.length : 78.4
+  const safety = siteSafety ?? 98.4
+  const cycleSec = st && st.cyclesPerHour ? (3600 / st.cyclesPerHour).toFixed(1) : '22.4'
+  const stability = st ? Math.max(0, 100 - st.harshEvents * 5 - Math.round(st.overspeedMin * 4)) : 94
+  const fuelScore = st ? Math.max(0, Math.round(100 - st.idlePct * 1.5)) : 92
 
   return (
     <div className="flex flex-col w-full text-on-surface">
@@ -31,12 +40,12 @@ export default function Analytics() {
       </section>
 
       <section className="px-space-lg py-space-md grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-space-sm bg-surface-dim">
-        <KPICard label="Fleet Utilization" value={78.4} unit="%" icon="speed" token="tertiary" progressPct={78.4} />
-        <KPICard label="Fuel Efficiency" value={24.2} unit="L/h" icon="local_gas_station" token="secondary" progressPct={68} />
-        <KPICard label="Avg Task Duration" value={prediction.aiEstimateMin} unit="min" icon="timer" token="primary" sub={`AI vs ${prediction.historicalAverageMin}m historical`} />
-        <KPICard label="Safety Posture" value={98.4} unit="/100" icon="shield" token="tertiary" progressPct={98.4} />
-        <KPICard label="Cumulative Idle" value={6.8} unit="%" icon="hourglass_empty" token="primary" sub="Target <10% OK" />
-        <KPICard label="Total Earth Moved" value={workCompleted.toFixed(0)} unit="m³" icon="inventory_2" token="primary" />
+        <KPICard label="Fleet Utilization" value={utilization.toFixed(1)} unit="%" icon="speed" token="tertiary" progressPct={utilization} />
+        <KPICard label="Fuel Efficiency" value={st ? st.fuelPerHourL : 24.2} unit="L/h" icon="local_gas_station" token="secondary" progressPct={68} />
+        <KPICard label="Task Estimate" value={prediction.aiEstimateMin} unit="min" icon="timer" token="primary" sub={`AI vs ${prediction.historicalAverageMin}m typical`} />
+        <KPICard label="Safety Posture" value={safety} unit="/100" icon="shield" token="tertiary" progressPct={safety} sub={backendOnline ? 'Avg operator safety score' : undefined} />
+        <KPICard label="Cumulative Idle" value={st ? st.idlePct : 6.8} unit="%" icon="hourglass_empty" token={st && st.idlePct > 15 ? 'error' : 'primary'} sub="Target < 15%" />
+        <KPICard label="Total Earth Moved" value={st ? st.materialM3 : workCompleted.toFixed(0)} unit="m³" icon="inventory_2" token="primary" sub={st ? `${st.loadCycles} load cycles this shift` : undefined} />
       </section>
 
       <section className="p-space-lg grid grid-cols-1 xl:grid-cols-2 gap-space-lg bg-surface">
@@ -78,7 +87,7 @@ export default function Analytics() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-space-md items-center my-space-md">
             <div className="md:col-span-5 flex flex-col items-center justify-center p-space-sm bg-surface-container-lowest rounded">
-              <RadialGauge value={98.4} label="Safety Index" token="tertiary" size={140} />
+              <RadialGauge value={safety} label="Safety Index" token="tertiary" size={140} />
             </div>
             <div className="md:col-span-7 flex flex-col gap-1.5">
               <div className="flex items-center justify-between p-2 bg-surface-container rounded">
@@ -118,15 +127,15 @@ export default function Analytics() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm my-space-md">
             <div className="bg-surface-container-lowest p-space-sm rounded flex flex-col">
               <span className="font-label-sm text-label-sm uppercase text-outline">Cycle Trench Time</span>
-              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-on-surface">22.4s</div>
+              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-on-surface">{cycleSec}s</div>
             </div>
             <div className="bg-surface-container-lowest p-space-sm rounded flex flex-col">
               <span className="font-label-sm text-label-sm uppercase text-outline">G-Force Stability</span>
-              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-secondary">94/100</div>
+              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-secondary">{stability}/100</div>
             </div>
             <div className="bg-surface-container-lowest p-space-sm rounded flex flex-col">
               <span className="font-label-sm text-label-sm uppercase text-outline">Fuel Conservation</span>
-              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-primary">92/100</div>
+              <div className="mt-2 font-telemetry-xl text-telemetry-xl font-bold text-primary">{fuelScore}/100</div>
             </div>
           </div>
         </SectionCard>

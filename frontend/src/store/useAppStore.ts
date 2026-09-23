@@ -22,6 +22,7 @@ import { interlockSensors, preOpChecklist } from '../mock/safetyChecks'
 import { authenticateRFID } from '../services/rfidService'
 import { getScenarioEffect } from '../services/scenarioEngine'
 import type { SafetyCheckItem } from '../types/domain'
+import { SCENARIO_COMMANDS, apiSend } from '../services/backend'
 
 export type WorkflowStep = 'idle' | 'rfid' | 'schedule' | 'machine_select' | 'preop' | 'live' | 'debrief'
 
@@ -29,6 +30,14 @@ let idCounter = 1000
 const nextId = (prefix: string) => `${prefix}-${idCounter++}`
 
 interface AppState {
+  /** true while the FastAPI backend streams live data; false = mock/demo mode */
+  backendOnline: boolean
+  operators: Operator[]
+  shiftReport?: any
+  siteSafetyScore?: number
+  acknowledgedAlertIds: string[]
+  applyBackend: (partial: Partial<AppState>) => void
+
   operator: Operator
   authStatus: 'pending' | 'authorized' | 'denied'
   authDenialReason?: string
@@ -76,7 +85,15 @@ function activeMachine(state: AppState): Machine {
   return state.machines.find((m) => m.id === state.selectedMachineId) ?? state.machines[0]
 }
 
+const simCommand = (machineId: string, command: string, field?: string, value?: unknown) =>
+  apiSend('/api/sim/command', { machineId, command, field, value }).catch(() => undefined)
+
 export const useAppStore = create<AppState>((set, get) => ({
+  backendOnline: false,
+  operators: [],
+  acknowledgedAlertIds: [],
+  applyBackend: (partial) => set(partial),
+
   operator: currentOperator,
   authStatus: 'pending',
   workflowStep: 'idle',
@@ -105,9 +122,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   training: mockTraining,
 
   authenticateOperator: (asOperatorId) => {
-    const operator = asOperatorId ? (getOperatorById(asOperatorId) ?? get().operator) : currentOperator
-    const machine = activeMachine(get())
+    const state = get()
+    const machine = activeMachine(state)
+    let operator = asOperatorId ? (getOperatorById(asOperatorId) ?? state.operator) : currentOperator
+    if (state.backendOnline && state.operators.length) {
+      if (asOperatorId === 'UNAUTHORIZED') {
+        // pick someone who is not endorsed for this machine class (or is below Tier-3)
+        operator =
+          state.operators.find((o) => !o.certifiedMachineTypes.includes(machine.type)) ??
+          state.operators.find((o) => o.certificationTier < 3) ??
+          state.operators[state.operators.length - 1]
+      } else {
+        const task = state.tasks.find((t) => t.id === state.selectedTaskId)
+        const wanted = asOperatorId && asOperatorId !== 'OP-01' ? asOperatorId : machine.currentOperatorId ?? task?.assignedOperatorId
+        operator = state.operators.find((o) => o.id === wanted) ?? state.operators[0]
+      }
+    }
     const result = authenticateRFID(operator, machine)
+    if (result.authorized && state.backendOnline) simCommand(machine.id, 'set', 'login', true)
     set({
       operator,
       authStatus: result.authorized ? 'authorized' : 'denied',
@@ -118,14 +150,37 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   resetAuth: () => set({ operator: currentOperator, authStatus: 'pending', authDenialReason: undefined, workflowStep: 'rfid' }),
 
-  selectTask: (taskId) => set({ selectedTaskId: taskId, workflowStep: 'machine_select' }),
+  selectTask: (taskId) => {
+    const task = get().tasks.find((t) => t.id === taskId)
+    set({
+      selectedTaskId: taskId,
+      workflowStep: 'machine_select',
+      ...(get().backendOnline && task?.assignedMachineId ? { selectedMachineId: task.assignedMachineId } : {}),
+    })
+  },
 
-  selectMachine: (machineId) => set({ selectedMachineId: machineId }),
+  selectMachine: (machineId) => {
+    const state = get()
+    const next = state.backendOnline
+      ? state.tasks.find((t) => t.assignedMachineId === machineId && t.status === 'active') ??
+        state.tasks.find((t) => t.assignedMachineId === machineId && t.status !== 'completed')
+      : undefined
+    set({ selectedMachineId: machineId, ...(next ? { selectedTaskId: next.id } : {}) })
+  },
 
   goToStep: (step) => set({ workflowStep: step }),
 
   startOperation: () => {
-    const machine = activeMachine(get())
+    const state = get()
+    const task = state.tasks.find((t) => t.id === state.selectedTaskId)
+    if (state.backendOnline) {
+      if (task?.backendId && task.status !== 'active' && task.status !== 'completed') {
+        apiSend(`/api/tasks/${task.backendId}`, { status: 'in_progress' }, 'PATCH').catch(() => undefined)
+      }
+      set({ workflowStep: 'live', operationRunning: true })
+      return
+    }
+    const machine = activeMachine(state)
     set({
       workflowStep: 'live',
       operationRunning: true,
@@ -137,7 +192,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   tick: () => {
     const state = get()
-    if (!state.operationRunning) return
+    if (!state.operationRunning || state.backendOnline) return // live mode: backend drives telemetry
     const jitter = (n: number, spread: number) => Math.max(0, n + (Math.random() - 0.5) * spread)
     set({
       elapsedSec: state.elapsedSec + 1,
@@ -154,6 +209,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   triggerScenario: (key) => {
     const state = get()
     const machine = activeMachine(state)
+    if (state.backendOnline) {
+      for (const cmd of SCENARIO_COMMANDS[key]) simCommand(machine.id, cmd)
+      if (key === 'drowsiness') {
+        // the webcam normally sends these; simulate ~10 s of drowsy eyes
+        let n = 0
+        const send = () => apiSend('/api/events/camera', { machineId: machine.id, kind: 'drowsy', confidence: 0.92 }).catch(() => undefined)
+        send()
+        const id = setInterval(() => (++n >= 5 ? clearInterval(id) : send()), 2000)
+      }
+      set({ activeScenario: key })
+      return
+    }
     const effect = getScenarioEffect(key, machine.id)
     const newAlerts = [...state.alerts]
     const newNotifications = [...state.notifications]
@@ -221,10 +288,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   acknowledgeAlert: (id) =>
-    set((state) => ({ alerts: state.alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)) })),
+    set((state) => ({
+      acknowledgedAlertIds: [...state.acknowledgedAlertIds, id],
+      alerts: state.alerts.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)),
+    })),
 
   resolveActiveEvent: () => {
     const state = get()
+    if (state.backendOnline) {
+      simCommand(activeMachine(state).id, 'normal')
+      set({
+        activeScenario: 'normal',
+        acknowledgedAlertIds: [...state.acknowledgedAlertIds, ...state.alerts.map((a) => a.id)],
+        alerts: state.alerts.map((a) => ({ ...a, acknowledged: true })),
+      })
+      return
+    }
     set({
       alerts: state.alerts.map((a) => (!a.resolved ? { ...a, resolved: true, acknowledged: true } : a)),
       incidents: state.incidents.map((i) => (i.status === 'open' ? { ...i, status: 'resolved', resolution: 'Operator responded per AI guidance. Verified safe.' } : i)),
@@ -232,7 +311,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     get().triggerScenario('normal')
   },
 
-  completeTask: () => set({ workflowStep: 'debrief', operationRunning: false }),
+  completeTask: () => {
+    const state = get()
+    const task = state.tasks.find((t) => t.id === state.selectedTaskId)
+    if (state.backendOnline && task?.backendId && task.status === 'active') {
+      apiSend(`/api/tasks/${task.backendId}`, { status: 'done' }, 'PATCH').catch(() => undefined)
+    }
+    set({ workflowStep: 'debrief', operationRunning: false })
+  },
 
   markNotificationRead: (id) =>
     set((state) => ({ notifications: state.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) })),

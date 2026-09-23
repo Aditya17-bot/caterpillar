@@ -13,6 +13,7 @@ import Notifications from './pages/Notifications'
 import RfidAuth from './pages/operation/RfidAuth'
 import PreOpCheck from './pages/operation/PreOpCheck'
 import Debrief from './pages/operation/Debrief'
+import { Cameras, Maintenance, ShiftReport, SiteMap, Supervisor } from './pages/FeaturePages'
 
 export default function App() {
   return (
@@ -29,6 +30,11 @@ export default function App() {
           <Route path="/training" element={<OperatorTraining />} />
           <Route path="/incidents" element={<IncidentLog />} />
           <Route path="/notifications" element={<Notifications />} />
+          <Route path="/site-map" element={<SiteMap />} />
+          <Route path="/cameras" element={<Cameras />} />
+          <Route path="/shift" element={<ShiftReport />} />
+          <Route path="/maintenance" element={<Maintenance />} />
+          <Route path="/supervisor" element={<Supervisor />} />
           <Route path="/operation/rfid" element={<RfidAuth />} />
           <Route path="/operation/preop" element={<PreOpCheck />} />
           <Route path="/operation/debrief" element={<Debrief />} />

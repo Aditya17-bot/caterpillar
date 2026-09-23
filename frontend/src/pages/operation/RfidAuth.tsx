@@ -3,7 +3,6 @@ import Icon from '../../components/common/Icon'
 import SectionCard from '../../components/common/SectionCard'
 import StatusPill from '../../components/common/StatusPill'
 import { useAppStore, selectActiveMachine } from '../../store/useAppStore'
-import { mockOperators } from '../../mock/operators'
 
 export default function RfidAuth() {
   const navigate = useNavigate()
@@ -30,13 +29,13 @@ export default function RfidAuth() {
         </div>
         <div className="flex items-center gap-space-sm">
           <button
-            onClick={() => authenticateOperator('OP-01')}
+            onClick={() => authenticateOperator()}
             className="px-space-md py-2 bg-primary-container hover:bg-primary text-on-primary-container hover:text-on-primary font-label-md text-label-md uppercase tracking-wider font-bold rounded transition-all"
           >
             Simulate Authorized Badge
           </button>
           <button
-            onClick={() => authenticateOperator('OP-07')}
+            onClick={() => authenticateOperator('UNAUTHORIZED')}
             className="px-space-md py-2 bg-error-container text-error hover:bg-error hover:text-on-error font-label-md text-label-md uppercase tracking-wider font-bold rounded flex items-center gap-1.5 transition-all"
           >
             <Icon name="block" className="text-[16px]" />
@@ -79,9 +78,7 @@ export default function RfidAuth() {
           <div className="bg-surface-container-low p-space-md rounded flex flex-col gap-1">
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase">Machinery Certification</span>
             <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {mockOperators
-                .find((o) => o.id === operator.id)
-                ?.certifiedMachineTypes.map((t) => (
+              {operator.certifiedMachineTypes.map((t) => (
                   <span key={t} className="px-2 py-1 bg-surface-container-high text-primary font-body-md text-body-md font-mono rounded font-semibold">
                     {t.toUpperCase()} APPROVED
                   </span>

@@ -9,8 +9,6 @@ import SafetyChecklistItem from '../components/domain/SafetyChecklistItem'
 import { useAppStore } from '../store/useAppStore'
 import { machineStatusToToken } from '../lib/statusColors'
 import { getTaskTimePrediction } from '../services/predictionService'
-import { mockWeather } from '../mock/site'
-import { interlockSensors } from '../mock/safetyChecks'
 
 export default function ScheduleTasks() {
   const navigate = useNavigate()
@@ -21,10 +19,18 @@ export default function ScheduleTasks() {
   const selectTask = useAppStore((s) => s.selectTask)
   const selectMachine = useAppStore((s) => s.selectMachine)
   const [filter, setFilter] = useState<'all' | 'available'>('all')
+  const interlockSensors = useAppStore((s) => s.interlockSensors)
+  const operators = useAppStore((s) => s.operators)
+  const backendOnline = useAppStore((s) => s.backendOnline)
 
   const activeTask = tasks.find((t) => t.id === selectedTaskId) ?? tasks[0]
   const selectedMachine = machines.find((m) => m.id === selectedMachineId) ?? machines[0]
-  const prediction = getTaskTimePrediction(activeTask.id)
+  const prediction = getTaskTimePrediction(activeTask)
+  const assignedOp = operators.find((o) => o.id === activeTask.assignedOperatorId)
+  const factorText = (activeTask.factors || [])
+    .slice(0, 3)
+    .map((f) => `${f.label} ${f.deltaMin > 0 ? '+' : ''}${f.deltaMin} min`)
+    .join(', ')
   const visibleMachines = filter === 'available' ? machines.filter((m) => m.status === 'available') : machines
 
   return (
@@ -120,26 +126,36 @@ export default function ScheduleTasks() {
                 <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider">Assigned Operator</span>
                 <div className="flex items-center gap-1.5 mt-1">
                   <Icon name="badge" className="text-[16px] text-primary" />
-                  <span className="font-body-lg text-body-lg text-on-surface font-bold">Sarah J.</span>
+                  <span className="font-body-lg text-body-lg text-on-surface font-bold">{assignedOp?.name ?? 'Sarah J.'}</span>
                 </div>
               </div>
               <div className="flex flex-col">
                 <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider">Weather &amp; Ground</span>
                 <div className="flex items-center gap-1.5 mt-1">
                   <Icon name="wb_sunny" className="text-[16px] text-primary-container" />
-                  <span className="font-body-lg text-body-lg text-on-surface font-bold">{mockWeather.tempC}°C Clear</span>
+                  <span className="font-body-lg text-body-lg text-on-surface font-bold">
+                    {activeTask.tempC != null ? `${Math.round(activeTask.tempC)}°C ${activeTask.weather ?? ''}` : '31°C Clear'}
+                  </span>
                 </div>
               </div>
             </div>
 
             <AIInsightPanel
               title="AI Task Formulation & Simulation"
-              modelBadge="RF MODEL v9.2"
-              reason={`Dry soil and operator skill advantage reduce estimated duration below the ${prediction.historicalAverageMin}min handbook baseline.`}
+              modelBadge={backendOnline ? 'RANDOM FOREST · R² 0.89' : 'RF MODEL v9.2'}
+              reason={
+                backendOnline && activeTask.predictedMin != null
+                  ? `Estimate ${prediction.aiEstimateMin} min (80% range ${Math.round(activeTask.predictedLow ?? 0)}–${Math.round(activeTask.predictedHigh ?? 0)}) vs ${prediction.historicalAverageMin} min in typical conditions. Biggest factors: ${factorText || 'none significant'}.`
+                  : `Dry soil and operator skill advantage reduce estimated duration below the ${prediction.historicalAverageMin}min handbook baseline.`
+              }
               metrics={[
                 { label: 'AI Predicted', value: `${prediction.aiEstimateMin} min`, token: 'tertiary' },
-                { label: 'Baseline', value: `${prediction.historicalAverageMin} min` },
-                { label: 'Risk Score', value: '0.12 LOW', token: 'tertiary' },
+                { label: 'Typical', value: `${prediction.historicalAverageMin} min` },
+                {
+                  label: 'Risk Score',
+                  value: activeTask.slopeDeg > 10 || activeTask.soilType === 'Rock' ? 'MEDIUM' : 'LOW',
+                  token: activeTask.slopeDeg > 10 || activeTask.soilType === 'Rock' ? 'primary' : 'tertiary',
+                },
               ]}
             />
 

@@ -29,7 +29,7 @@ export default function MachineHealth() {
   const selectedMachineId = useAppStore((s) => s.selectedMachineId)
   const selectMachine = useAppStore((s) => s.selectMachine)
   const machine = machines.find((m) => m.id === selectedMachineId) ?? machines[0]
-  const diagnosis = getFaultDiagnosis(machine.id)
+  const diagnosis = getFaultDiagnosis(machine)
 
   const sorted = [...machines].sort((a, b) => a.telemetry.healthScore - b.telemetry.healthScore)
 
@@ -152,7 +152,7 @@ export default function MachineHealth() {
 
           <AIInsightPanel
             title="AI Predictive Fault Classification"
-            modelBadge="CAT ECM-NET v4.8"
+            modelBadge="RANDOM FOREST · 96.6% ACC"
             reason={diagnosis.evidence}
             confidencePct={diagnosis.confidencePct}
             metrics={[

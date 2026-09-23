@@ -43,6 +43,7 @@ SCENARIOS = {
     "low_oil": 30,
     "fuel_waste": 75,
     "harsh": 10,
+    "heavy_load": 40,        # bucket near full: advised speed drops, engine works harder
     "enter_zone": 40,        # drive into the pedestrian area
     "approach_machine": 40,  # drive towards the nearest machine
     "rollover": 20,          # tilt past 35 degrees -> automatic SOS
@@ -251,6 +252,8 @@ class Machine:
         rpm_target = {"work": 1750, "travel": 1600, "idle": 850, "off": 0}[phase]
         if self.active("fuel_waste") and phase != "off":
             rpm_target = 2250
+        if self.active("heavy_load") and phase != "off":
+            rpm_target = 2050
         self.rpm = max(0.0, approach(self.rpm, rpm_target, 0.3) + r.gauss(0, 20) * (phase != "off"))
 
         temp_target = 45 if phase == "off" else 82 + 8 * (self.rpm / 1750) + 0.1 * self.humidity
@@ -284,7 +287,8 @@ class Machine:
             self.cycle_timer += dt
             if self.cycle_timer >= r.uniform(15, 25):
                 self.cycle_timer, load_cycle = 0.0, True
-        self.load = approach(self.load, 80 if phase == "work" else 30, 0.1)
+        load_target = 97 if self.active("heavy_load") else 80 if phase == "work" else 30
+        self.load = approach(self.load, load_target, 0.2 if self.active("heavy_load") else 0.1)
 
         harsh = self.active("harsh") and r.random() < 0.6 or (phase == "travel" and r.random() < 0.01)
         if self.engine_on:

@@ -552,6 +552,10 @@ def overheat_eta(ms: MachineState) -> Optional[float]:
         if t_eq <= OVERHEAT_C + 1:
             return None                       # settles below the limit
         return math.log((t_eq - current) / (t_eq - OVERHEAT_C)) / k
+    # no levelling-off detected: only treat it as a runaway when clearly hot and climbing fast,
+    # otherwise small wobbles around the normal ~95 °C would raise false alarms
+    if current < 98 or rate_now < 0.08:
+        return None
     return (OVERHEAT_C - current) / rate_now
 
 

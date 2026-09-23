@@ -7,11 +7,16 @@ const navItems = [
   { path: '/schedule', label: 'Schedule & Tasks', icon: 'calendar_month' },
   { path: '/fleet', label: 'Machines Fleet', icon: 'forklift' },
   { path: '/live-operation', label: 'Live Operation', icon: 'videocam' },
+  { path: '/site-map', label: 'Site Map', icon: 'map' },
+  { path: '/cameras', label: 'Cameras', icon: 'photo_camera' },
   { path: '/safety', label: 'Safety Center', icon: 'security' },
   { path: '/machine-health', label: 'Machine Health', icon: 'health_and_safety' },
+  { path: '/maintenance', label: 'Maintenance', icon: 'build' },
   { path: '/analytics', label: 'Analytics', icon: 'monitoring' },
   { path: '/training', label: 'Operator Training', icon: 'model_training' },
   { path: '/incidents', label: 'Incident Log', icon: 'assignment_late' },
+  { path: '/shift', label: 'Shift Report', icon: 'summarize' },
+  { path: '/supervisor', label: 'Supervisor', icon: 'insights' },
   { path: '/notifications', label: 'Notifications & Alerts', icon: 'notification_important' },
 ]
 

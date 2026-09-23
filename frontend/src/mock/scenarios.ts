@@ -12,6 +12,10 @@ export const scenarioDefinitions: ScenarioDefinition[] = [
   { key: 'low_oil_pressure', label: 'Low Oil Pressure', icon: 'oil_barrel', severity: 'critical', description: 'Oil pressure collapse detected.' },
   { key: 'excessive_idling', label: 'Excessive Idling', icon: 'hourglass_bottom', severity: 'warning', description: 'Idle time exceeds efficiency target.' },
   { key: 'unsafe_operation', label: 'Unsafe Operation', icon: 'dangerous', severity: 'critical', description: 'Multiple safety envelopes breached.' },
+  { key: 'geofence_breach', label: 'Zone Breach', icon: 'wrong_location', severity: 'critical', description: 'Machine drives into the pedestrian area.' },
+  { key: 'machine_proximity', label: 'Machine Convergence', icon: 'swap_horiz', severity: 'warning', description: 'Drives towards the nearest machine.' },
+  { key: 'breakdown', label: 'Breakdown → SOS', icon: 'car_crash', severity: 'critical', description: 'Oil pressure lost, engine stalls, auto-SOS.' },
+  { key: 'rollover', label: 'Rollover → SOS', icon: 'sos', severity: 'critical', description: 'Tilt past 35°, auto-SOS to nearby machines.' },
 ]
 
 export function getScenarioDefinition(key: string) {

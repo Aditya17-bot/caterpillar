@@ -2,6 +2,9 @@ import Icon from '../components/common/Icon'
 import SectionCard from '../components/common/SectionCard'
 import StatusPill from '../components/common/StatusPill'
 import { useAppStore } from '../store/useAppStore'
+import TrainingHubJsx from '../legacy/pages/Training.jsx'
+
+const TrainingHub = TrainingHubJsx as any
 
 const categoryIcon: Record<string, string> = {
   safety: 'shield',
@@ -15,6 +18,8 @@ const categoryIcon: Record<string, string> = {
 export default function OperatorTraining() {
   const training = useAppStore((s) => s.training)
   const operator = useAppStore((s) => s.operator)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const openHub = () => document.getElementById('training-hub')?.scrollIntoView({ behavior: 'smooth' })
 
   return (
     <div className="p-space-lg flex flex-col gap-space-lg">
@@ -60,7 +65,7 @@ export default function OperatorTraining() {
               </span>
             </div>
             {!t.completed && (
-              <button className="mt-1 w-full py-2.5 px-space-md bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2">
+              <button onClick={openHub} className="mt-1 w-full py-2.5 px-space-md bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2">
                 <Icon name="play_arrow" className="text-[18px]" />
                 Enroll in Module
               </button>
@@ -68,6 +73,12 @@ export default function OperatorTraining() {
           </SectionCard>
         ))}
       </div>
+
+      {backendOnline && (
+        <div id="training-hub" className="legacy">
+          <TrainingHub operatorId={operator.id} />
+        </div>
+      )}
     </div>
   )
 }

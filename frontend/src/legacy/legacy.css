@@ -1,0 +1,114 @@
+/* Styles for the feature components ported from the first dashboard (site map, cameras, shift report,
+   maintenance, co-pilot, black box, hazard drill...). Everything is scoped under .legacy and uses the
+   same dark palette as the Tailwind theme so the pages blend in. */
+.legacy {
+  --bg: #0f131c;
+  --card: #1c2028;
+  --card-low: #181c24;
+  --card-high: #262a33;
+  --line: #31353e;
+  --text: #dfe2ee;
+  --muted: #a08e7a;
+  --amber: #ffc174;
+  --amber-strong: #f59e0b;
+  --ok: #56e5a9;
+  --bad: #ffb4ab;
+  --bad-bg: rgba(147, 0, 10, 0.35);
+  --warn-bg: rgba(245, 158, 11, 0.15);
+  color: var(--text);
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+}
+.legacy h2 { font-size: 20px; font-weight: 700; margin: 16px 0 10px; text-transform: uppercase; letter-spacing: 0.02em; }
+.legacy h3 { font-size: 13px; font-weight: 700; margin: 2px 0 8px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--amber); }
+.legacy p { margin: 6px 0; }
+.legacy a { color: #4cd7f6; }
+.legacy code { font-family: "JetBrains Mono", monospace; background: var(--card-high); padding: 1px 4px; border-radius: 3px; }
+.legacy button {
+  background: var(--card-high); color: var(--text); border: 1px solid var(--line); border-radius: 4px;
+  padding: 5px 10px; cursor: pointer; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.legacy button:hover:not(:disabled) { background: var(--amber-strong); color: #472a00; border-color: var(--amber-strong); }
+.legacy button:disabled { opacity: 0.45; cursor: not-allowed; }
+.legacy button.primary { background: var(--amber-strong); color: #472a00; }
+.legacy input, .legacy select, .legacy textarea {
+  background: var(--card-low); color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px;
+}
+.legacy input[type="radio"], .legacy input[type="checkbox"] { accent-color: var(--amber-strong); }
+.legacy input[type="range"] { accent-color: var(--amber-strong); padding: 0; }
+.legacy .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.legacy .selected { outline: 2px solid var(--amber-strong); }
+.legacy .ok { color: var(--ok); }
+.legacy .bad { color: var(--bad); }
+.legacy .muted { color: var(--muted); }
+.legacy .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.legacy .tile { background: var(--card-low); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.legacy .tile-bad { background: var(--bad-bg); border-color: var(--bad); }
+.legacy .tile-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.legacy .tile-value { font-family: "JetBrains Mono", monospace; font-size: 22px; font-weight: 700; }
+.legacy .tile-value small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.legacy .advisory { background: var(--warn-bg); border-left: 3px solid var(--amber-strong); padding: 8px 10px; border-radius: 4px; }
+.legacy .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; margin-top: 12px; }
+.legacy .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px; }
+.legacy .alert { padding: 5px 8px; margin: 4px 0; border-left: 3px solid var(--line); background: var(--card-low); border-radius: 3px; }
+.legacy .alert.warning { border-color: var(--amber-strong); }
+.legacy .alert.critical { border-color: var(--bad); background: var(--bad-bg); }
+.legacy .feed { max-height: 360px; overflow-y: auto; }
+.legacy table { width: 100%; border-collapse: collapse; background: var(--card); border-radius: 8px; overflow: hidden; }
+.legacy th { text-align: left; padding: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--card-low); }
+.legacy td { text-align: left; padding: 7px 8px; border-top: 1px solid var(--line); font-size: 13px; }
+.legacy .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.legacy .buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.legacy .modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.legacy .quiz { margin-top: 8px; }
+.legacy .option { display: block; margin: 3px 0; }
+.legacy .video-wrap { position: relative; width: 100%; background: #000; border-radius: 6px; overflow: hidden; }
+.legacy .video-wrap video { width: 100%; display: block; transform: scaleX(-1); }
+.legacy .video-wrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+.legacy .twin { width: 100%; max-height: 220px; }
+.legacy .countdown { font-size: 20px; padding: 10px; border-radius: 6px; background: var(--card-low); margin-bottom: 8px; }
+.legacy .countdown b { font-size: 30px; font-family: "JetBrains Mono", monospace; }
+.legacy .factors { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; margin-top: 4px; }
+.legacy .factors span { background: var(--card-high); padding: 1px 6px; border-radius: 10px; }
+.legacy .pace { font-size: 13px; margin-top: 4px; }
+.legacy .bar { height: 8px; background: var(--card-high); border-radius: 4px; overflow: hidden; margin: 3px 0; min-width: 80px; }
+.legacy .bar > div { height: 100%; background: var(--amber-strong); }
+.legacy .stat-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.legacy .sim-canvas { width: 100%; max-width: 640px; border-radius: 6px; }
+.legacy .map-layout { display: grid; grid-template-columns: 1fr 280px; gap: 12px; }
+@media (max-width: 1100px) { .legacy .map-layout { grid-template-columns: 1fr; } .legacy .grid2 { grid-template-columns: 1fr; } }
+.legacy .map-wrap { position: relative; background: #0a0e16; border-radius: 8px; overflow: hidden; }
+.legacy .map-wrap canvas { display: block; width: 100%; cursor: grab; }
+.legacy .map-tip { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,0.8); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: "JetBrains Mono", monospace; }
+.legacy .legend .sw { display: inline-block; width: 14px; height: 10px; margin: 0 4px 0 6px; vertical-align: middle; border: 1px solid #0006; }
+.legacy .legend .ring-y { border: 2px dashed var(--amber-strong); border-radius: 50%; width: 12px; height: 12px; }
+.legacy .legend .ring-r { border: 2px dashed var(--bad); border-radius: 50%; width: 12px; height: 12px; }
+.legacy .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 60; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 80px 12px 24px; }
+.legacy .modal { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; width: 100%; max-width: 780px; }
+.legacy .modal.wide { max-width: 1200px; }
+.legacy .check-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.legacy .check-row .note { flex-basis: 100%; }
+.legacy button.pass.on { background: #1f7a52; color: #fff; border-color: #1f7a52; }
+.legacy button.fail.on { background: #93000a; color: #fff; border-color: #93000a; }
+.legacy .thumb { max-height: 80px; vertical-align: middle; margin-left: 8px; border-radius: 4px; }
+.legacy .copilot {
+  position: fixed; right: 16px; bottom: 16px; width: 380px; max-width: calc(100vw - 32px); background: var(--card);
+  border: 1px solid var(--amber-strong); border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.6); z-index: 55; display: flex; flex-direction: column;
+}
+.legacy .copilot-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: var(--amber-strong); color: #472a00; border-radius: 9px 9px 0 0; }
+.legacy .copilot-head .muted { color: #613b00; }
+.legacy .copilot-head button { background: transparent; border-color: #613b00; color: #472a00; padding: 0 8px; }
+.legacy .copilot-log { max-height: 300px; min-height: 90px; overflow-y: auto; padding: 8px; font-size: 13px; }
+.legacy .bubble { padding: 7px 10px; border-radius: 8px; margin: 5px 0; max-width: 90%; line-height: 1.45; }
+.legacy .bubble.user { background: var(--amber-strong); color: #472a00; margin-left: auto; }
+.legacy .bubble.assistant { background: var(--card-high); }
+.legacy .copilot-input { display: flex; gap: 4px; padding: 6px; border-top: 1px solid var(--line); }
+.legacy .copilot-input input { flex: 1; }
+.legacy .copilot-opts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; font-size: 11px; border-top: 1px solid var(--line); }
+.legacy .mic.on { background: #93000a; color: #fff; }
+.legacy .copilot-fab { position: fixed; right: 16px; bottom: 16px; z-index: 55; background: var(--amber-strong); color: #472a00; padding: 10px 16px; border-radius: 24px; }
+@media print {
+  aside, header, .legacy .copilot, .legacy .copilot-fab, .legacy .no-print { display: none !important; }
+  .pl-72 { padding-left: 0 !important; }
+  .legacy { color: #000; }
+}

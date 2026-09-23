@@ -46,6 +46,25 @@ export interface Machine {
   bucketConfig?: string
   telemetry: MachineTelemetry
   aiMatchScore?: number
+  /** Live extras from the backend (absent in mock mode). */
+  online?: boolean
+  engineOn?: boolean
+  seatbelt?: boolean
+  obstacleCm?: number
+  surface?: string
+  ml?: MachineML
+  pos?: { x: number; y: number; heading: number; elevation?: number }
+  zone?: string | null
+  inspectionStatus?: 'done' | 'pending' | 'locked'
+  activeAlertTypes?: string[]
+  currentOperatorName?: string
+}
+
+export interface MachineML {
+  fault?: FaultLabel | null
+  faultProb?: number | null
+  advisory?: string
+  overheatEtaSec?: number | null
 }
 
 export type CertificationTier = 1 | 2 | 3 | 4
@@ -80,6 +99,17 @@ export interface ScheduledTask {
   assignedMachineId?: string
   assignedOperatorId?: string
   location: string
+  /** Backend fields (absent in mock mode). */
+  backendId?: number
+  predictedMin?: number
+  predictedLow?: number
+  predictedHigh?: number
+  factors?: { factor: string; label: string; deltaMin: number }[]
+  pace?: { doneM3: number; progressPct: number; elapsedMin: number; projectedMinutes: number | null; deltaMin: number | null }
+  weather?: string
+  tempC?: number
+  actualMin?: number | null
+  startedAt?: number | null
 }
 
 export interface WeatherSnapshot {
@@ -141,6 +171,9 @@ export interface Incident {
   actionTaken: string
   resolution: string
   status: IncidentStatus
+  backendId?: number
+  hasBlackbox?: boolean
+  alertType?: string
 }
 
 export interface AIFeatureWeight {
@@ -240,6 +273,10 @@ export interface NotificationItem {
 }
 
 export type ScenarioKey =
+  | 'geofence_breach'
+  | 'machine_proximity'
+  | 'breakdown'
+  | 'rollover'
   | 'normal'
   | 'heavy_load'
   | 'steep_slope'

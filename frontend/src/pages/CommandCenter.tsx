@@ -8,16 +8,6 @@ import Timeline, { type TimelineEntry } from '../components/domain/Timeline'
 import StatusPill from '../components/common/StatusPill'
 import { useAppStore, selectActiveMachine } from '../store/useAppStore'
 import { mockWeather } from '../mock/site'
-import { mockSchedule } from '../mock/schedule'
-
-const shiftTimeline: TimelineEntry[] = mockSchedule.map((t) => ({
-  id: t.id,
-  time: `${t.startTime} - ${t.endTime}`,
-  title: t.title,
-  detail: `${t.volumeM3} m³ • ${t.soilType} • ${t.location}`,
-  tag: t.soilType,
-  state: t.status === 'completed' ? 'done' : t.status === 'active' ? 'active' : 'upcoming',
-}))
 
 export default function CommandCenter() {
   const operator = useAppStore((s) => s.operator)
@@ -26,6 +16,23 @@ export default function CommandCenter() {
   const workCompleted = useAppStore((s) => s.workCompletedM3)
   const target = useAppStore((s) => s.targetVolumeM3)
   const activeTask = useAppStore((s) => s.tasks.find((t) => t.id === s.selectedTaskId))
+  const allTasks = useAppStore((s) => s.tasks)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const shift = useAppStore((s) => s.shiftReport)
+  const copilotMessage = useAppStore((s) => s.copilotMessage)
+  const tasks = backendOnline ? allTasks.filter((t) => t.assignedMachineId === machine.id) : allTasks
+  const shiftTimeline: TimelineEntry[] = tasks.map((t) => ({
+    id: t.id,
+    time: `${t.startTime} - ${t.endTime}`,
+    title: t.title,
+    detail: `${t.volumeM3} m³ • ${t.soilType} • ${t.location}${t.predictedMin ? ` • AI est. ${Math.round(t.predictedMin)} min` : ''}`,
+    tag: t.soilType,
+    state: t.status === 'completed' ? 'done' : t.status === 'active' ? 'active' : 'upcoming',
+  }))
+  const count = (st: string) => tasks.filter((t) => t.status === st).length
+  const stats = shift?.stats
+  const openAlerts = alerts.filter((a) => !a.resolved && (!backendOnline || a.machineId === machine.id))
+  const slope = Math.abs(machine.telemetry.slopeDeg)
 
   return (
     <div className="flex flex-col w-full text-on-surface">
@@ -95,14 +102,14 @@ export default function CommandCenter() {
 
       <div className="p-gutter-lg flex flex-col gap-gutter-lg">
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-md">
-          <KPICard label="Today's Tasks" value={mockSchedule.length} unit="Assigned" icon="assignment" token="primary" sub="1 Active • 2 Queued • 1 Done" />
+          <KPICard label="Today's Tasks" value={tasks.length} unit="Assigned" icon="assignment" token="primary" sub={`${count('active')} Active • ${count('scheduled') + count('queued')} Queued • ${count('completed')} Done`} />
           <KPICard label="Active Machinery" value={machine.id} icon="precision_manufacturing" token="primary" sub={machine.model} />
-          <KPICard label="Machine Health" value={machine.telemetry.healthScore} unit="/ 100" icon="health_and_safety" token="tertiary" sub="Nominal Parameters" />
-          <KPICard label="Safety Posture" value={alerts.some((a) => !a.resolved && a.severity === 'critical') ? 'ALERT' : 'GREEN'} icon="shield" token={alerts.some((a) => !a.resolved) ? 'error' : 'tertiary'} sub="100% Belt Compliance" />
-          <KPICard label="Fuel Consumption" value={machine.telemetry.fuelPct} unit="%" icon="local_gas_station" token="primary" sub="-8% vs Fleet Avg" />
-          <KPICard label="Cumulative Idle" value={machine.telemetry.idleMin} unit="min" icon="hourglass_bottom" token="secondary" sub="Target < 10% Compliant" />
-          <KPICard label="Excavation Rate" value={284} unit="m³/h" icon="speed" token="primary" sub="+12% Above Benchmark" />
-          <KPICard label="Terrain Risk Index" value="LOW" icon="landscape" token="tertiary" sub={`Slope ${machine.telemetry.slopeDeg}° • Dense Clay`} />
+          <KPICard label="Machine Health" value={machine.telemetry.healthScore} unit="/ 100" icon="health_and_safety" token={machine.telemetry.healthScore < 70 ? 'error' : 'tertiary'} sub={machine.ml?.fault && machine.ml.fault !== 'normal' ? `AI: ${machine.ml.fault.replace(/_/g, ' ')}` : 'Nominal Parameters'} />
+          <KPICard label="Safety Posture" value={openAlerts.some((a) => a.severity === 'critical') ? 'ALERT' : openAlerts.length ? 'CAUTION' : 'GREEN'} icon="shield" token={openAlerts.length ? 'error' : 'tertiary'} sub={stats ? `${stats.seatbeltCompliancePct}% Belt Compliance` : '100% Belt Compliance'} />
+          <KPICard label="Fuel" value={machine.telemetry.fuelPct} unit="%" icon="local_gas_station" token="primary" sub={stats ? `${stats.fuelL} L this shift • ${stats.fuelPerHourL} L/h` : '-8% vs Fleet Avg'} />
+          <KPICard label="Idle Share" value={stats ? stats.idlePct : machine.telemetry.idleMin} unit={stats ? '%' : 'min'} icon="hourglass_bottom" token={stats && stats.idlePct > 15 ? 'error' : 'secondary'} sub={stats ? `${stats.idleMin} min idle • target < 15%` : 'Target < 10% Compliant'} />
+          <KPICard label="Excavation Rate" value={stats ? Math.round((stats.materialM3 / Math.max(stats.engineOnMin, 1)) * 60) : 284} unit="m³/h" icon="speed" token="primary" sub={stats ? `${stats.materialM3} m³ moved • ${stats.loadCycles} cycles` : '+12% Above Benchmark'} />
+          <KPICard label="Terrain Risk Index" value={slope > 20 ? 'HIGH' : slope > 12 ? 'MEDIUM' : 'LOW'} icon="landscape" token={slope > 20 ? 'error' : slope > 12 ? 'primary' : 'tertiary'} sub={`Slope ${machine.telemetry.slopeDeg}° • ${machine.surface ?? 'Dense Clay'}`} />
         </section>
 
         <SectionCard className="flex flex-col lg:flex-row gap-gutter-lg justify-between items-stretch">
@@ -182,7 +189,7 @@ export default function CommandCenter() {
                     No active alerts. Trigger a scenario from Live Operation to see the AI copilot react.
                   </div>
                 )}
-                {alerts.slice(0, 4).map((a) => (
+                {(backendOnline ? openAlerts.concat(alerts.filter((a) => a.resolved && a.machineId === machine.id)) : alerts).slice(0, 4).map((a) => (
                   <div
                     key={a.id}
                     className={`p-space-md rounded-xl flex flex-col gap-1.5 ${
@@ -227,7 +234,7 @@ export default function CommandCenter() {
                 </span>
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant mt-0.5">
-                Bucket load trajectory is optimal. Dig angle adjustment suggested for upcoming bench transition.
+                {backendOnline ? copilotMessage : 'Bucket load trajectory is optimal. Dig angle adjustment suggested for upcoming bench transition.'}
               </p>
             </div>
           </div>

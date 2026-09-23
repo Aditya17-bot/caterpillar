@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { apiSend } from '../../services/backend'
 import Icon from '../../components/common/Icon'
 import SectionCard from '../../components/common/SectionCard'
 import KPICard from '../../components/common/KPICard'
@@ -18,10 +20,24 @@ export default function Debrief() {
   const incidents = useAppStore((s) => s.incidents)
   const training = useAppStore((s) => s.training)
   const resetDemo = useAppStore((s) => s.resetDemo)
+  const backendOnline = useAppStore((s) => s.backendOnline)
+  const shift = useAppStore((s) => s.shiftReport)
+  const [report, setReport] = useState<any>(null)
+  const [busy, setBusy] = useState(false)
 
-  const actualMin = Math.round(elapsedSec / 60) || 64
-  const prediction = getTaskTimePrediction(activeTask?.id ?? 'TSK-8821', actualMin)
-  const sessionIncidents = incidents.slice(0, 2)
+  const actualMin = Math.round(activeTask?.actualMin ?? elapsedSec / 60) || 64
+  const prediction = getTaskTimePrediction(activeTask, actualMin)
+  const sessionIncidents = backendOnline ? incidents.filter((i) => i.machineId === machine.id).slice(0, 2) : incidents.slice(0, 2)
+  const grade = shift ? `${shift.scores.grade} · ${Math.round((shift.scores.safety + shift.scores.efficiency) / 2)}` : '98.4'
+  const endShift = async () => {
+    setBusy(true)
+    try {
+      setReport(await apiSend(`/api/shift/${machine.id}/end`, {}))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const barMax = Math.max(prediction.aiEstimateMin, actualMin, 1)
   const newTraining = training.find((t) => !t.completed)
 
   return (
@@ -50,7 +66,7 @@ export default function Debrief() {
         <div className="flex items-center gap-space-sm">
           <div className="bg-surface-container px-space-md py-space-sm rounded flex flex-col justify-center">
             <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Overall Grade</span>
-            <span className="font-telemetry-xl text-telemetry-xl text-primary leading-none">98.4</span>
+            <span className="font-telemetry-xl text-telemetry-xl text-primary leading-none">{grade}</span>
           </div>
         </div>
       </SectionCard>
@@ -64,7 +80,14 @@ export default function Debrief() {
           token="primary"
           sub={`Pred: ${prediction.aiEstimateMin}m | Act: ${actualMin}m`}
         />
-        <KPICard label="Fuel Burn" value={machine.telemetry.fuelPct} unit="%" icon="local_gas_station" token="tertiary" sub="Below baseline" />
+        <KPICard
+          label="Fuel Burn"
+          value={shift ? shift.stats.fuelL : machine.telemetry.fuelPct}
+          unit={shift ? 'L' : '%'}
+          icon="local_gas_station"
+          token="tertiary"
+          sub={shift ? `${shift.cost.currency}${shift.cost.fuel} • ${shift.cost.co2Kg} kg CO₂` : 'Below baseline'}
+        />
         <KPICard label="Safety Interventions" value={sessionIncidents.length} unit="Events" icon="warning" token={sessionIncidents.length > 0 ? 'primary' : 'tertiary'} sub="Mitigated" />
       </div>
 
@@ -84,7 +107,7 @@ export default function Debrief() {
                 <span className="font-mono text-secondary font-bold">{prediction.aiEstimateMin} min</span>
               </div>
               <div className="w-full bg-surface-container-highest h-3 rounded overflow-hidden">
-                <div className="bg-secondary h-full rounded" style={{ width: '88%' }} />
+                <div className="bg-secondary h-full rounded" style={{ width: `${(100 * prediction.aiEstimateMin) / barMax}%` }} />
               </div>
               <div className="flex justify-between text-[11px] font-body-md mt-1">
                 <span className="text-on-surface flex items-center gap-1.5">
@@ -94,7 +117,7 @@ export default function Debrief() {
                 <span className="font-mono text-primary font-bold">{actualMin} min</span>
               </div>
               <div className="w-full bg-surface-container-highest h-3 rounded overflow-hidden">
-                <div className="bg-primary h-full rounded" style={{ width: '91%' }} />
+                <div className="bg-primary h-full rounded" style={{ width: `${(100 * actualMin) / barMax}%` }} />
               </div>
             </div>
           </SectionCard>
@@ -122,6 +145,47 @@ export default function Debrief() {
         </div>
 
         <div className="xl:col-span-5 flex flex-col gap-space-lg">
+          {backendOnline && (
+            <SectionCard>
+              <div className="flex items-center gap-2">
+                <Icon name="summarize" className="text-primary text-[20px]" />
+                <span className="font-headline-md text-headline-md text-on-surface uppercase">End-of-Shift AI Report</span>
+              </div>
+              {shift && !report && (
+                <div className="grid grid-cols-2 gap-space-sm mt-space-sm font-body-md text-body-md">
+                  <span>Shift: <b>{shift.stats.durationMin} min</b></span>
+                  <span>Idle: <b>{shift.stats.idlePct}%</b></span>
+                  <span>Load cycles: <b>{shift.stats.loadCycles}</b></span>
+                  <span>Material: <b>{shift.stats.materialM3} m³</b></span>
+                  <span>Avg engine: <b>{shift.stats.avgEngineTempC}°C</b></span>
+                  <span>Seatbelt: <b>{shift.stats.seatbeltCompliancePct}%</b></span>
+                </div>
+              )}
+              {report ? (
+                <div className="mt-space-sm flex flex-col gap-space-sm">
+                  <p className="font-body-lg text-body-lg text-on-surface leading-relaxed bg-surface-container p-space-md rounded">{report.summary}</p>
+                  <span className="font-label-sm text-label-sm text-outline uppercase">
+                    Written by {report.source === 'claude' ? 'Claude' : 'offline co-pilot'} · saved to Shift Report history
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={endShift}
+                  disabled={busy}
+                  className="w-full mt-space-sm py-2.5 px-space-md bg-primary-container text-on-primary-container hover:bg-primary hover:text-on-primary transition-all font-headline-md text-label-md tracking-wider uppercase font-bold rounded flex items-center justify-center gap-2"
+                >
+                  <Icon name="auto_awesome" className="text-[18px]" />
+                  {busy ? 'Generating…' : 'End Shift & Generate AI Report'}
+                </button>
+              )}
+              <button
+                onClick={() => navigate('/shift')}
+                className="w-full mt-space-sm py-2 px-space-md bg-surface-container-high text-on-surface font-label-md text-label-md uppercase rounded"
+              >
+                Full shift statistics
+              </button>
+            </SectionCard>
+          )}
           {newTraining && (
             <SectionCard>
               <div className="flex items-center justify-between">
