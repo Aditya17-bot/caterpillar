@@ -6,7 +6,7 @@
 - dashboard: `http://localhost:5173`
 - MongoDB: `mongodb://localhost:27017/cat_assistant`
 
-## 1. Telemetry: ESP32 → gateway
+## 1. Telemetry: simulator (virtual ESP32) → gateway
 `POST /api/telemetry` every 1 s
 
 ```json
@@ -26,7 +26,7 @@
 }
 ```
 
-## 2. Operator login: ESP32 → gateway
+## 2. Operator login: simulator → gateway
 `POST /api/auth/rfid` `{ "rfid": "A1B2C3D4", "machineId": "EXC-001" }`
 → `{ "ok": true, "operator": { "id": "OP-01", "name": "Ravi", "certified": ["excavator"] } }`
 
